@@ -5,8 +5,10 @@ import "react-toastify/dist/ReactToastify.css";
 import Header from "./components/layout/Header";
 import SummaryCards from "./components/dashboard/SummaryCards";
 import StockPage from "./pages/StockPage";
+import StockManagementPage from "./pages/StockManagementPage";
 import InventoryPage from "./pages/InventoryPage";
 import DebtorsPage from "./pages/DebtorsPage";
+import UserManagementPage from "./pages/UserManagementPage";
 import CustomerList from "./components/customers/CustomerList";
 import CustomerDetails from "./components/customers/CustomerDetails";
 import PendingInventoryCard from "./components/customers/PendingInventoryCard";
@@ -14,7 +16,6 @@ import TransactionTable from "./components/customers/TransactionTable";
 import NewCustomerSaleModal from "./components/modals/NewCustomerSaleModal";
 import ExistingCustomerSaleModal from "./components/modals/ExistingCustomerSaleModal";
 import CollectionModal from "./components/modals/CollectionModal";
-import PasswordModal from "./components/modals/PasswordModal";
 import LoginPage from "./pages/LoginPage";
 import {
   getTotalReceivables,
@@ -35,13 +36,19 @@ import {
   getStocks,
   updateStockQuantity,
 } from "./services/stockService";
-import { ADMIN_ACTION_PASSWORD } from "./utils/security";
 import { sanitizeAmountForPayload } from "./utils/money";
 import {
   clearAuthSession,
+  getAuthSession,
   getAuthToken,
   setAuthSession,
 } from "./utils/authStorage";
+import {
+  hasPermission,
+  isPageLocked,
+  normalizePageLocks,
+  normalizePermissions,
+} from "./utils/rbac";
 
 const defaultDefterSuggestions = [
   "Ana Defter",
@@ -50,16 +57,12 @@ const defaultDefterSuggestions = [
   "Online Satış Defteri",
 ];
 
-const defaultPasswordModalState = {
-  isOpen: false,
-  action: null,
-  customer: null,
-};
-
 const getPageFromPath = (pathname) => {
   if (pathname === "/stok") return "stok";
   if (pathname === "/envanter") return "envanter";
   if (pathname === "/borclular") return "borclular";
+  if (pathname === "/personeller") return "personeller";
+  if (pathname === "/urun-stok") return "urun-stok";
   return "home";
 };
 
@@ -140,8 +143,9 @@ function App() {
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return Boolean(getAuthToken());
+    return Boolean(getAuthToken() && getAuthSession());
   });
+  const [authSession, setLocalAuthSession] = useState(() => getAuthSession());
   const [activePage, setActivePage] = useState(() =>
     getPageFromPath(location.pathname),
   );
@@ -155,10 +159,37 @@ function App() {
   const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [stockError, setStockError] = useState("");
-  const [passwordModalState, setPasswordModalState] = useState(
-    defaultPasswordModalState,
-  );
   const submitGuardRef = useRef(false);
+  const userRole = authSession?.role || "";
+  const currentUserId = authSession?.userId || "";
+  const isAdmin = userRole === "admin";
+  const isAdminOrManager = isAdmin || userRole === "yonetici";
+  const permissions = useMemo(
+    () => normalizePermissions(authSession?.permissions),
+    [authSession],
+  );
+  const pageLocks = useMemo(
+    () => normalizePageLocks(authSession?.pageLocks),
+    [authSession],
+  );
+  const availablePages = useMemo(
+    () =>
+      ["home", "stok", "envanter", "borclular", "personeller", "urun-stok"].filter(
+        (pageId) =>
+          pageId === "home" ||
+          (!isPageLocked(pageLocks, pageId) &&
+            (pageId !== "personeller" || isAdminOrManager)),
+      ),
+    [isAdminOrManager, pageLocks],
+  );
+  const canDeleteCustomer = hasPermission(permissions, "musteriSilebilir");
+  const canCollectPayment = hasPermission(permissions, "tahsilatAlabilir");
+  const canCreateSale = hasPermission(permissions, "satisYapabilir");
+  const canManageStock = hasPermission(permissions, "stokDuzenleyebilir");
+  const canManageInventory = hasPermission(
+    permissions,
+    "envanterDuzenleyebilir",
+  );
 
   const defterSuggestions = useMemo(() => {
     const fromTx = transactions.map((t) => t.kayitDefteri).filter(Boolean);
@@ -218,40 +249,47 @@ function App() {
     [stock],
   );
 
-  const syncRoute = useCallback((pageId, pathname, replace = false) => {
-    setActivePage(pageId);
-    if (location.pathname !== pathname) {
-      navigate(pathname, { replace });
-    }
-  }, [location.pathname, navigate]);
+  const syncRoute = useCallback(
+    (pageId, pathname, replace = false) => {
+      setActivePage(pageId);
+      if (location.pathname !== pathname) {
+        navigate(pathname, { replace });
+      }
+    },
+    [location.pathname, navigate],
+  );
 
-  const resetPasswordModal = useCallback(() => {
-    setPasswordModalState(defaultPasswordModalState);
-  }, []);
-
-  const openPasswordModal = useCallback((action, customer = null) => {
-    // Modal zaten açıksa tekrar açma
-    if (passwordModalState.isOpen && passwordModalState.action === action) {
-      return;
-    }
-
-    setSubmitError("");
-    setPasswordModalState({
-      isOpen: true,
-      action,
-      customer,
-    });
-  }, [passwordModalState.isOpen, passwordModalState.action]);
-
-  const closePasswordModal = useCallback(() => {
-    resetPasswordModal();
-  }, [resetPasswordModal]);
+  const redirectUnauthorizedPage = useCallback(
+    (pageId) => {
+      toast.error("Yetkisiz Erişim: Bu sayfayı görüntüleme yetkiniz yok.", {
+        toastId: `page-lock-${pageId}`,
+      });
+      syncRoute("home", "/dashboard", true);
+    },
+    [syncRoute],
+  );
 
   const refreshStockData = useCallback(async () => {
     const stocksResponse = await getStocks();
     const normalizedStocks = stocksResponse.map(normalizeStock);
     setStock(normalizedStocks);
     return normalizedStocks;
+  }, []);
+
+  const refreshAuthSession = useCallback((nextSessionPartial) => {
+    const currentSession = getAuthSession();
+    if (!currentSession) {
+      return;
+    }
+
+    const nextSession = {
+      ...currentSession,
+      ...nextSessionPartial,
+    };
+
+    setAuthSession(nextSession);
+    setLocalAuthSession(nextSession);
+    setIsAuthenticated(Boolean(getAuthToken() && nextSession));
   }, []);
 
   const refreshDashboardData = useCallback(async () => {
@@ -303,7 +341,8 @@ function App() {
         setStockError("");
 
         const responses = await Promise.all(requests);
-        const [customersResponse, transactionsResponse, stocksResponse] = responses;
+        const [customersResponse, transactionsResponse, stocksResponse] =
+          responses;
 
         const normalizedCustomers = customersResponse.map(normalizeCustomer);
         const normalizedTransactions =
@@ -332,6 +371,11 @@ function App() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
+    if (!authSession) {
+      clearAuthSession();
+      setIsAuthenticated(false);
+      return;
+    }
 
     if (location.pathname === "/") {
       syncRoute("home", "/dashboard", true);
@@ -339,6 +383,10 @@ function App() {
     }
 
     if (location.pathname === "/stok") {
+      if (isPageLocked(pageLocks, "stok")) {
+        redirectUnauthorizedPage("stok");
+        return;
+      }
       setActivePage("stok");
       return;
     }
@@ -349,33 +397,62 @@ function App() {
     }
 
     if (location.pathname === "/borclular") {
+      if (isPageLocked(pageLocks, "borclular")) {
+        redirectUnauthorizedPage("borclular");
+        return;
+      }
       setActivePage("borclular");
       return;
     }
 
+    if (location.pathname === "/personeller") {
+      if (!isAdminOrManager || isPageLocked(pageLocks, "personeller")) {
+        redirectUnauthorizedPage("personeller");
+        return;
+      }
+      setActivePage("personeller");
+      return;
+    }
+
     if (location.pathname === "/envanter") {
+      if (isPageLocked(pageLocks, "envanter")) {
+        redirectUnauthorizedPage("envanter");
+        return;
+      }
       setActivePage("envanter");
+      return;
+    }
+
+    if (location.pathname === "/urun-stok") {
+      if (isPageLocked(pageLocks, "urun-stok")) {
+        redirectUnauthorizedPage("urun-stok");
+        return;
+      }
+      setActivePage("urun-stok");
       return;
     }
 
     // Bilinmeyen rotalar için ana sayfaya yönlendir
     syncRoute("home", "/dashboard", true);
   }, [
+    authSession,
+    isAdminOrManager,
+    pageLocks,
+    redirectUnauthorizedPage,
     isAuthenticated,
     location.pathname,
     syncRoute,
   ]);
 
-  const handleLogin = useCallback(
-    (response) => {
-      setAuthSession(response);
-      setIsAuthenticated(true);
-    },
-    [],
-  );
+  const handleLogin = useCallback((response) => {
+    setAuthSession(response);
+    setLocalAuthSession(response);
+    setIsAuthenticated(true);
+  }, []);
 
   const handleLogout = useCallback(() => {
     clearAuthSession();
+    setLocalAuthSession(null);
     setIsAuthenticated(false);
     setCustomers([]);
     setTransactions([]);
@@ -385,16 +462,23 @@ function App() {
 
   const handlePageChange = useCallback(
     (pageId) => {
+      if (pageId !== "home" && isPageLocked(pageLocks, pageId)) {
+        redirectUnauthorizedPage(pageId);
+        return;
+      }
+
       const pagePathMap = {
         home: "/dashboard",
         stok: "/stok",
         envanter: "/envanter",
         borclular: "/borclular",
+        personeller: "/personeller",
+        "urun-stok": "/urun-stok",
       };
 
       syncRoute(pageId, pagePathMap[pageId] ?? "/dashboard");
     },
-    [syncRoute],
+    [pageLocks, redirectUnauthorizedPage, syncRoute],
   );
 
   const performDeleteCustomer = useCallback(
@@ -415,38 +499,12 @@ function App() {
         toast.success("Müşteri ve tüm kayıtları başarıyla silindi.");
       } catch (error) {
         console.error("Hata Detayı:", error);
-        setSubmitError(
-          error?.response?.data?.message || "Müşteri silinemedi.",
-        );
+        setSubmitError(error?.response?.data?.message || "Müşteri silinemedi.");
       } finally {
         setIsDeletingCustomer(false);
       }
     },
     [refreshDashboardData, selectedCustomerId],
-  );
-
-  const handlePasswordModalSubmit = useCallback(
-    (password) => {
-      if (password !== ADMIN_ACTION_PASSWORD) {
-        return "Şifre hatalı.";
-      }
-
-      if (
-        passwordModalState.action === "delete" &&
-        passwordModalState.customer
-      ) {
-        const customerToDelete = passwordModalState.customer;
-        resetPasswordModal();
-        void performDeleteCustomer(customerToDelete);
-      }
-
-      return null;
-    },
-    [
-      passwordModalState,
-      performDeleteCustomer,
-      resetPasswordModal,
-    ],
   );
 
   const handleSelectCustomer = useCallback(
@@ -599,80 +657,60 @@ function App() {
     [refreshDashboardData],
   );
 
-  const handleAddStock = useCallback((formData) => {
-    setIsStockSubmitting(true);
-    setStockError("");
+  const handleAddStock = useCallback(
+    (formData) => {
+      setIsStockSubmitting(true);
+      setStockError("");
 
-    return addOrUpdateStock(formData)
-      .then(() => refreshStockData())
-      .catch((error) => {
-        console.error("Hata Detayı:", error);
-        setStockError(error?.response?.data?.message || "Stok eklenemedi.");
-        throw error;
-      })
-      .finally(() => {
-        setIsStockSubmitting(false);
-      });
-  }, [refreshStockData]);
+      return addOrUpdateStock(formData)
+        .then(() => refreshStockData())
+        .catch((error) => {
+          console.error("Hata Detayı:", error);
+          setStockError(error?.response?.data?.message || "Stok eklenemedi.");
+          throw error;
+        })
+        .finally(() => {
+          setIsStockSubmitting(false);
+        });
+    },
+    [refreshStockData],
+  );
 
-  const handleUpdateStockQuantity = useCallback((stockId, adet) => {
-    setIsStockSubmitting(true);
-    setStockError("");
+  const handleUpdateStockQuantity = useCallback(
+    (stockId, adet) => {
+      setIsStockSubmitting(true);
+      setStockError("");
 
-    return updateStockQuantity(stockId, { adet })
-      .then(() => refreshStockData())
-      .catch((error) => {
-        console.error("Hata Detayı:", error);
-        setStockError(
-          error?.response?.data?.message || "Stok miktarı güncellenemedi.",
-        );
-        throw error;
-      })
-      .finally(() => {
-        setIsStockSubmitting(false);
-      });
-  }, [refreshStockData]);
+      return updateStockQuantity(stockId, { adet })
+        .then(() => refreshStockData())
+        .catch((error) => {
+          console.error("Hata Detayı:", error);
+          setStockError(
+            error?.response?.data?.message || "Stok miktarı güncellenemedi.",
+          );
+          throw error;
+        })
+        .finally(() => {
+          setIsStockSubmitting(false);
+        });
+    },
+    [refreshStockData],
+  );
 
   const handleDeleteCustomer = useCallback(
     (customer) => {
       if (!customer) return;
-      openPasswordModal("delete", customer);
-    },
-    [openPasswordModal],
-  );
-
-  const handleDeliverInventory = useCallback(
-    (transactionId, productIndex, deliveredQty) => {
-      setTransactions((prev) =>
-        prev.map((tx) => {
-          if (tx.id !== transactionId || !tx.urunler) return tx;
-
-          return {
-            ...tx,
-            urunler: tx.urunler.map((urun, index) => {
-              if (index !== productIndex) return urun;
-
-              const currentAdet = Number(urun.adet) || 1;
-              const normalizedDeliveredQty = Math.min(
-                Math.max(Number(deliveredQty) || 0, 0),
-                currentAdet,
-              );
-
-              if (normalizedDeliveredQty >= currentAdet) {
-                return { ...urun, envanterdeMi: false };
-              }
-
-              return {
-                ...urun,
-                adet: currentAdet - normalizedDeliveredQty,
-                envanterdeMi: true,
-              };
-            }),
-          };
-        }),
+      const isConfirmed = window.confirm(
+        `${customer.ad} ${customer.soyad} müşterisini silmek istiyor musunuz?`,
       );
+
+      if (!isConfirmed) {
+        return;
+      }
+
+      void performDeleteCustomer(customer);
     },
-    [],
+    [performDeleteCustomer],
   );
 
   if (!isAuthenticated) {
@@ -689,6 +727,9 @@ function App() {
       <div className="min-h-screen flex flex-col">
         <Header
           activePage={activePage}
+          availablePages={availablePages}
+          canCreateSale={canCreateSale}
+          role={userRole}
           onPageChange={handlePageChange}
           onExistingSale={() => setShowExistingSaleModal(true)}
           onNewCustomerSale={() => setShowNewCustomerModal(true)}
@@ -731,6 +772,8 @@ function App() {
                     onAddCollection={() => setShowCollectionModal(true)}
                     onDeleteCustomer={handleDeleteCustomer}
                     isDeletingCustomer={isDeletingCustomer}
+                    canCollect={canCollectPayment}
+                    canDeleteCustomer={canDeleteCustomer}
                   />
                   {selectedCustomer && (
                     <PendingInventoryCard items={customerInventoryItems} />
@@ -747,13 +790,12 @@ function App() {
               isLoading={isStockLoading}
               errorMessage={stockError}
               isSubmitting={isStockSubmitting}
+              canManageStock={canManageStock}
             />
           ) : activePage === "envanter" ? (
-            <InventoryPage
-              transactions={transactions}
-              customers={customers}
-              onDeliver={handleDeliverInventory}
-            />
+            <InventoryPage canManageInventory={canManageInventory} />
+          ) : activePage === "urun-stok" ? (
+            <StockManagementPage canManageStock={canManageStock} />
           ) : activePage === "borclular" ? (
             <DebtorsPage
               customers={customers}
@@ -761,55 +803,50 @@ function App() {
                 handleSelectCustomer(customerId, "home")
               }
             />
+          ) : activePage === "personeller" ? (
+            <UserManagementPage
+              currentUserId={currentUserId}
+              onSessionRefresh={refreshAuthSession}
+            />
           ) : null}
         </main>
 
-        <NewCustomerSaleModal
-          isOpen={showNewCustomerModal}
-          onClose={() => setShowNewCustomerModal(false)}
-          onSubmit={handleNewCustomerSale}
-          stockOptions={stockOptions}
-          defterSuggestions={defterSuggestions}
-          isSubmitting={isSubmitting}
-          submitError={submitError}
-        />
+        {canCreateSale ? (
+          <NewCustomerSaleModal
+            isOpen={showNewCustomerModal}
+            onClose={() => setShowNewCustomerModal(false)}
+            onSubmit={handleNewCustomerSale}
+            stockOptions={stockOptions}
+            defterSuggestions={defterSuggestions}
+            isSubmitting={isSubmitting}
+            submitError={submitError}
+          />
+        ) : null}
 
-        <ExistingCustomerSaleModal
-          isOpen={showExistingSaleModal}
-          onClose={() => setShowExistingSaleModal(false)}
-          onSubmit={handleExistingCustomerSale}
-          customers={customers}
-          stockOptions={stockOptions}
-          defterSuggestions={defterSuggestions}
-          isSubmitting={isSubmitting}
-          submitError={submitError}
-        />
+        {canCreateSale ? (
+          <ExistingCustomerSaleModal
+            isOpen={showExistingSaleModal}
+            onClose={() => setShowExistingSaleModal(false)}
+            onSubmit={handleExistingCustomerSale}
+            customers={customers}
+            stockOptions={stockOptions}
+            defterSuggestions={defterSuggestions}
+            isSubmitting={isSubmitting}
+            submitError={submitError}
+          />
+        ) : null}
 
-        <CollectionModal
-          isOpen={showCollectionModal}
-          onClose={() => setShowCollectionModal(false)}
-          onSubmit={handleCollection}
-          customer={selectedCustomer}
-          defterSuggestions={defterSuggestions}
-          submitError={submitError}
-          isSubmitting={isSubmitting}
-        />
-
-        <PasswordModal
-          isOpen={passwordModalState.isOpen}
-          title={
-            passwordModalState.action === "delete"
-              ? "Müşteri Silme Onayı"
-              : "Yetkili Onayı Gerekli"
-          }
-          description={
-            passwordModalState.action === "delete"
-              ? "Müşteriyi ve tüm ilişkili kayıtları silmek için yetkili şifresini girin."
-              : "Bu işlem için yetkili şifrenizi girin."
-          }
-          onClose={closePasswordModal}
-          onSubmit={handlePasswordModalSubmit}
-        />
+        {canCollectPayment ? (
+          <CollectionModal
+            isOpen={showCollectionModal}
+            onClose={() => setShowCollectionModal(false)}
+            onSubmit={handleCollection}
+            customer={selectedCustomer}
+            defterSuggestions={defterSuggestions}
+            submitError={submitError}
+            isSubmitting={isSubmitting}
+          />
+        ) : null}
       </div>
 
       <ToastContainer position="top-right" autoClose={3000} />

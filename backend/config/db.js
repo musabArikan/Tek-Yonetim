@@ -13,6 +13,12 @@ const requireEnv = (key) => {
 const connectDB = async () => {
   try {
     const mongoUri = requireEnv("MONGODB_URI");
+    mongoose.connection.on("error", (err) => {
+      console.error("MongoDB runtime connection error:", err.message);
+    });
+    mongoose.connection.on("disconnected", () => {
+      console.warn("MongoDB disconnected.");
+    });
     const conn = await mongoose.connect(mongoUri, {
       autoIndex: true,
     });

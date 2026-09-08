@@ -14,6 +14,7 @@ export default function StockPage({
   isLoading = false,
   errorMessage = "",
   isSubmitting = false,
+  canManageStock = false,
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState("all");
@@ -150,24 +151,28 @@ export default function StockPage({
           Stok (Envanter)
         </h2>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleSaveAllChanges}
-            disabled={pendingChangesCount === 0 || isSubmitting || isSaving}
-            className={`text-sm font-semibold rounded-lg px-5 py-2.5 flex items-center justify-center gap-2 active:scale-95 shrink-0 cursor-pointer transition-opacity ${
-              pendingChangesCount === 0
-                ? "bg-surface-container text-on-surface-variant cursor-not-allowed opacity-60"
-                : "bg-primary-container text-white hover:opacity-90"
-            }`}
-          >
-            {isSaving ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
-          </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="text-sm font-semibold bg-primary-container text-white hover:opacity-90 transition-opacity rounded-lg px-5 py-2.5 flex items-center justify-center gap-2 active:scale-95 shrink-0 cursor-pointer"
-          >
-            <PlusCircle size={18} />
-            Yeni Stok Ekle
-          </button>
+          {canManageStock ? (
+            <>
+              <button
+                onClick={handleSaveAllChanges}
+                disabled={pendingChangesCount === 0 || isSubmitting || isSaving}
+                className={`text-sm font-semibold rounded-lg px-5 py-2.5 flex items-center justify-center gap-2 active:scale-95 shrink-0 cursor-pointer transition-opacity ${
+                  pendingChangesCount === 0
+                    ? "bg-surface-container text-on-surface-variant cursor-not-allowed opacity-60"
+                    : "bg-primary-container text-white hover:opacity-90"
+                }`}
+              >
+                {isSaving ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
+              </button>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="text-sm font-semibold bg-primary-container text-white hover:opacity-90 transition-opacity rounded-lg px-5 py-2.5 flex items-center justify-center gap-2 active:scale-95 shrink-0 cursor-pointer"
+              >
+                <PlusCircle size={18} />
+                Yeni Stok Ekle
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -177,7 +182,7 @@ export default function StockPage({
         </div>
       ) : null}
 
-      {pendingChangesCount > 0 ? (
+      {canManageStock && pendingChangesCount > 0 ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Kaydedilmeyi bekleyen {pendingChangesCount} stok satırı var.
         </div>
@@ -242,9 +247,11 @@ export default function StockPage({
                   <th className="p-4 text-xs font-semibold text-on-surface-variant text-right">
                     Envanterde
                   </th>
-                  <th className="p-4 text-xs font-semibold text-on-surface-variant text-right">
-                    Adet Değiştir
-                  </th>
+                  {canManageStock ? (
+                    <th className="p-4 text-xs font-semibold text-on-surface-variant text-right">
+                      Adet Değiştir
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
@@ -278,45 +285,47 @@ export default function StockPage({
                           {Number(item.envanterdekiAdet || 0).toLocaleString("tr-TR")}
                         </span>
                       </td>
-                      <td className="p-4">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => adjustDraftQuantity(item, -1)}
-                            disabled={isSubmitting || normalizedDraftQuantity <= minimumQuantity}
-                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-                            aria-label={`${item.urunKodu} adet azalt`}
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            min={minimumQuantity}
-                            step="1"
-                            value={draftQuantity}
-                            onChange={(event) =>
-                              handleDraftQuantityChange(item, event.target.value)
-                            }
-                            onBlur={() =>
-                              setDraftQuantities((prev) => ({
-                                ...prev,
-                                [itemId]: String(getNormalizedDraftQuantity(item)),
-                              }))
-                            }
-                            className="w-24 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-right text-sm font-semibold text-on-surface focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/30"
-                            aria-label={`${item.urunKodu} stok adedi`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => adjustDraftQuantity(item, 1)}
-                            disabled={isSubmitting}
-                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-                            aria-label={`${item.urunKodu} adet artır`}
-                          >
-                            +
-                          </button>
-                        </div>
-                      </td>
+                      {canManageStock ? (
+                        <td className="p-4">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => adjustDraftQuantity(item, -1)}
+                              disabled={isSubmitting || normalizedDraftQuantity <= minimumQuantity}
+                              className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                              aria-label={`${item.urunKodu} adet azalt`}
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min={minimumQuantity}
+                              step="1"
+                              value={draftQuantity}
+                              onChange={(event) =>
+                                handleDraftQuantityChange(item, event.target.value)
+                              }
+                              onBlur={() =>
+                                setDraftQuantities((prev) => ({
+                                  ...prev,
+                                  [itemId]: String(getNormalizedDraftQuantity(item)),
+                                }))
+                              }
+                              className="w-24 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-right text-sm font-semibold text-on-surface focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/30"
+                              aria-label={`${item.urunKodu} stok adedi`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => adjustDraftQuantity(item, 1)}
+                              disabled={isSubmitting}
+                              className="flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant text-on-surface transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                              aria-label={`${item.urunKodu} adet artır`}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })}
@@ -326,12 +335,14 @@ export default function StockPage({
         </div>
       </div>
 
-      <AddStockModal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onSubmit={handleAddStock}
-        isSubmitting={isSubmitting}
-      />
+      {canManageStock ? (
+        <AddStockModal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          onSubmit={handleAddStock}
+          isSubmitting={isSubmitting}
+        />
+      ) : null}
     </div>
   );
 }

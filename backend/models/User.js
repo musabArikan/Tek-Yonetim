@@ -8,6 +8,16 @@ const userSchema = new mongoose.Schema(
       ref: "Tenant",
       required: [true, "tenantId zorunludur"],
     },
+    ad: {
+      type: String,
+      required: [true, "Ad zorunludur"],
+      trim: true,
+    },
+    soyad: {
+      type: String,
+      required: [true, "Soyad zorunludur"],
+      trim: true,
+    },
     email: {
       type: String,
       required: [true, "E-posta zorunludur"],
@@ -21,8 +31,12 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["admin", "staff"],
-      default: "staff",
+      enum: ["admin", "yonetici", "kasiyer", "depo_sorumlusu", "personel"],
+      default: "personel",
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
     permissions: {
       musteriSilebilir: {
@@ -59,6 +73,22 @@ const userSchema = new mongoose.Schema(
         type: Boolean,
         default: false,
       },
+      personeller: {
+        type: Boolean,
+        default: false,
+      },
+      raporlar: {
+        type: Boolean,
+        default: false,
+      },
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
   },
   {

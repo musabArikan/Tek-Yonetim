@@ -30,7 +30,7 @@ const normalizeInventoryItem = (item, transaction) => ({
   envanterAciklamasi: item.envanterAciklamasi || "-",
 });
 
-export default function InventoryPage() {
+export default function InventoryPage({ canManageInventory = false }) {
   const [inventoryItems, setInventoryItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
@@ -268,13 +268,15 @@ export default function InventoryPage() {
                       {item.envanterAciklamasi}
                     </td>
                     <td className="p-4 text-right">
-                      <button
-                        onClick={() => openDeliverModal(item)}
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors rounded-lg px-3 py-2 active:scale-95 cursor-pointer"
-                      >
-                        <PackageCheck size={16} />
-                        Teslim Et
-                      </button>
+                      {canManageInventory ? (
+                        <button
+                          onClick={() => openDeliverModal(item)}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors rounded-lg px-3 py-2 active:scale-95 cursor-pointer"
+                        >
+                          <PackageCheck size={16} />
+                          Teslim Et
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -284,57 +286,59 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      <Modal
-        isOpen={isDeliveryModalOpen}
-        onClose={closeDeliverModal}
-        title="Teslimat Miktarı"
-        size="md"
-      >
-        <div className="space-y-5">
-          <div className="rounded-lg border border-outline-variant bg-surface-container p-4">
-            <p className="text-sm text-on-surface-variant">Ürün</p>
-            <p className="mt-1 text-base font-semibold text-on-surface">
-              {selectedDeliverItem?.urunBilgisi}
-            </p>
-            <p className="mt-2 text-sm text-on-surface-variant">
-              Depodaki Toplam Adet:{" "}
-              <span className="font-semibold text-on-surface">
-                {maxDeliverable}
+      {canManageInventory ? (
+        <Modal
+          isOpen={isDeliveryModalOpen}
+          onClose={closeDeliverModal}
+          title="Teslimat Miktarı"
+          size="md"
+        >
+          <div className="space-y-5">
+            <div className="rounded-lg border border-outline-variant bg-surface-container p-4">
+              <p className="text-sm text-on-surface-variant">Ürün</p>
+              <p className="mt-1 text-base font-semibold text-on-surface">
+                {selectedDeliverItem?.urunBilgisi}
+              </p>
+              <p className="mt-2 text-sm text-on-surface-variant">
+                Depodaki Toplam Adet:{" "}
+                <span className="font-semibold text-on-surface">
+                  {maxDeliverable}
+                </span>
+              </p>
+            </div>
+
+            <label className="block">
+              <span className="text-sm font-medium text-on-surface">
+                Teslim Edilecek Adet
               </span>
-            </p>
-          </div>
+              <input
+                type="number"
+                min="1"
+                max={maxDeliverable}
+                value={deliverQuantity}
+                onChange={handleQuantityChange}
+                className="mt-2 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/30"
+              />
+            </label>
 
-          <label className="block">
-            <span className="text-sm font-medium text-on-surface">
-              Teslim Edilecek Adet
-            </span>
-            <input
-              type="number"
-              min="1"
-              max={maxDeliverable}
-              value={deliverQuantity}
-              onChange={handleQuantityChange}
-              className="mt-2 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary-container focus:ring-2 focus:ring-primary-container/30"
-            />
-          </label>
-
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={closeDeliverModal}
-              className="rounded-lg border border-outline-variant px-3 py-2 text-sm font-medium text-on-surface-variant transition-colors hover:bg-surface-container cursor-pointer"
-            >
-              İptal
-            </button>
-            <button
-              onClick={handleConfirmDelivery}
-              disabled={isSubmitting}
-              className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? "İşleniyor..." : "Teslim Et"}
-            </button>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={closeDeliverModal}
+                className="rounded-lg border border-outline-variant px-3 py-2 text-sm font-medium text-on-surface-variant transition-colors hover:bg-surface-container cursor-pointer"
+              >
+                İptal
+              </button>
+              <button
+                onClick={handleConfirmDelivery}
+                disabled={isSubmitting}
+                className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? "İşleniyor..." : "Teslim Et"}
+              </button>
+            </div>
           </div>
-        </div>
-      </Modal>
+        </Modal>
+      ) : null}
     </div>
   );
 }

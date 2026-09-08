@@ -33,7 +33,7 @@ const loginUser = async (req, res) => {
         .json({ message: "E-posta ve şifre zorunludur" });
     }
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email, isDeleted: false });
     if (!user) {
       return res.status(401).json({ message: "E-posta veya şifre hatalı" });
     }
@@ -53,6 +53,8 @@ const loginUser = async (req, res) => {
     res.status(200).json({
       token,
       userId: user._id,
+      ad: user.ad,
+      soyad: user.soyad,
       tenantId: user.tenantId,
       email: user.email,
       role: user.role,

@@ -6,6 +6,8 @@ export default function CustomerDetails({
   onAddCollection,
   onDeleteCustomer,
   isDeletingCustomer = false,
+  canCollect = false,
+  canDeleteCustomer = false,
 }) {
   if (!customer) {
     return (
@@ -69,26 +71,30 @@ export default function CustomerDetails({
         >
           {formatCurrency(customer.toplamKalanBakiye)}
         </h3>
-        <button
-          onClick={onAddCollection}
-          disabled={!hasDebt}
-          className={`mt-2 text-sm font-semibold bg-primary-container text-white border border-primary-container rounded-lg px-4 py-2 flex items-center gap-2 ml-auto transition-opacity ${
-            hasDebt
-              ? "hover:opacity-90 active:scale-95 cursor-pointer"
-              : "opacity-50 cursor-not-allowed"
-          }`}
-        >
-          <Wallet size={18} />
-          Tahsilat Ekle
-        </button>
-        <button
-          type="button"
-          onClick={() => onDeleteCustomer?.(customer)}
-          disabled={isDeletingCustomer}
-          className="mt-2 text-sm font-semibold bg-red-600 text-white border border-red-600 rounded-lg px-4 py-2 flex items-center gap-2 ml-auto transition-colors hover:bg-red-700 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
-        >
-          {isDeletingCustomer ? "Siliniyor..." : "Müşteriyi Sil"}
-        </button>
+        {canCollect ? (
+          <button
+            onClick={onAddCollection}
+            disabled={!hasDebt}
+            className={`mt-2 text-sm font-semibold bg-primary-container text-white border border-primary-container rounded-lg px-4 py-2 flex items-center gap-2 ml-auto transition-opacity ${
+              hasDebt
+                ? "hover:opacity-90 active:scale-95 cursor-pointer"
+                : "opacity-50 cursor-not-allowed"
+            }`}
+          >
+            <Wallet size={18} />
+            Tahsilat Ekle
+          </button>
+        ) : null}
+        {canDeleteCustomer ? (
+          <button
+            type="button"
+            onClick={() => onDeleteCustomer?.(customer)}
+            disabled={isDeletingCustomer}
+            className="mt-2 text-sm font-semibold bg-red-600 text-white border border-red-600 rounded-lg px-4 py-2 flex items-center gap-2 ml-auto transition-colors hover:bg-red-700 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            {isDeletingCustomer ? "Siliniyor..." : "Müşteriyi Sil"}
+          </button>
+        ) : null}
       </div>
     </div>
   );

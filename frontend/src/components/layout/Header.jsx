@@ -4,12 +4,17 @@ import { Tag, PlusCircle, Menu, X, LogOut } from "lucide-react";
 const navItems = [
   { id: "home", label: "Ana Sayfa" },
   { id: "stok", label: "Stok" },
+  { id: "urun-stok", label: "Ürün & Stok" },
   { id: "envanter", label: "Emanetler" },
   { id: "borclular", label: "Borçlular" },
+  { id: "personeller", label: "Personeller" },
 ];
 
 export default function Header({
   activePage,
+  availablePages = navItems.map((item) => item.id),
+  canCreateSale = false,
+  role = "",
   onPageChange,
   onExistingSale,
   onNewCustomerSale,
@@ -43,48 +48,58 @@ export default function Header({
             >
               Tek Yönetim
             </span>
+            {role ? (
+              <span className="text-xs font-medium uppercase tracking-[0.2em] text-white/70">
+                {role}
+              </span>
+            ) : null}
           </div>
           <nav className="hidden md:flex items-center gap-1">
-            {navItems.map(({ id, label }) => {
-              const isActive = activePage === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => handlePageChange(id)}
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                    isActive
-                      ? "bg-white/20 text-white"
-                      : "text-white/70 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
+            {navItems
+              .filter(({ id }) => availablePages.includes(id))
+              .map(({ id, label }) => {
+                const isActive = activePage === id;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => handlePageChange(id)}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                      isActive
+                        ? "bg-white/20 text-white"
+                        : "text-white/70 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
           </nav>
         </div>
 
         <div className="hidden md:flex items-center gap-4 shrink-0">
-          <button
-            onClick={onExistingSale}
-            className="text-sm font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors rounded-lg px-6 py-2 flex items-center gap-2 active:scale-95 cursor-pointer"
-          >
-            <Tag size={18} />
-            Mevcut Müşteriye Satış
-          </button>
-          <button
-            onClick={onNewCustomerSale}
-            className="text-sm font-semibold bg-white/20 text-white hover:bg-white/30 transition-opacity rounded-lg px-6 py-2 flex items-center gap-2 active:scale-95 cursor-pointer"
-          >
-            <PlusCircle size={18} />
-            Yeni Müşteri & Satış
-          </button>
+          {canCreateSale ? (
+            <>
+              <button
+                onClick={onExistingSale}
+                className="text-sm font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors rounded-lg px-6 py-2 flex items-center gap-2 active:scale-95 cursor-pointer"
+              >
+                <Tag size={18} />
+                Mevcut Müşteriye Satış
+              </button>
+              <button
+                onClick={onNewCustomerSale}
+                className="text-sm font-semibold bg-white/20 text-white hover:bg-white/30 transition-opacity rounded-lg px-6 py-2 flex items-center gap-2 active:scale-95 cursor-pointer"
+              >
+                <PlusCircle size={18} />
+                Yeni Müşteri & Satış
+              </button>
+            </>
+          ) : null}
           <button
             onClick={onLogout}
             className="text-sm font-semibold bg-red-600/90 text-white hover:bg-red-700 transition-colors rounded-lg px-4 py-2 flex items-center gap-2 active:scale-95 cursor-pointer"
           >
             <LogOut size={18} />
-         
           </button>
         </div>
 
@@ -115,44 +130,49 @@ export default function Header({
               </div>
             </div> */}
             <nav className="flex flex-col p-4 pt-2 gap-1">
-              {navItems.map(({ id, label }) => {
-                const isActive = activePage === id;
-                return (
-                  <button
-                    key={id}
-                    onClick={() => handlePageChange(id)}
-                    className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                      isActive
-                        ? "bg-white/20 text-white"
-                        : "text-white/70 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+              {navItems
+                .filter(({ id }) => availablePages.includes(id))
+                .map(({ id, label }) => {
+                  const isActive = activePage === id;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => handlePageChange(id)}
+                      className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                        isActive
+                          ? "bg-white/20 text-white"
+                          : "text-white/70 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
             </nav>
             <div className="flex flex-col gap-2 p-4 pt-0 border-t border-white/20">
-              <button
-                onClick={handleExistingSale}
-                className="w-full text-sm font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors rounded-lg px-4 py-3 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Tag size={18} />
-                Mevcut Müşteriye Satış
-              </button>
-              <button
-                onClick={handleNewCustomerSale}
-                className="w-full text-sm font-semibold bg-white/20 text-white hover:bg-white/30 transition-opacity rounded-lg px-4 py-3 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <PlusCircle size={18} />
-                Yeni Müşteri & Satış
-              </button>
+              {canCreateSale ? (
+                <>
+                  <button
+                    onClick={handleExistingSale}
+                    className="w-full text-sm font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors rounded-lg px-4 py-3 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Tag size={18} />
+                    Mevcut Müşteriye Satış
+                  </button>
+                  <button
+                    onClick={handleNewCustomerSale}
+                    className="w-full text-sm font-semibold bg-white/20 text-white hover:bg-white/30 transition-opacity rounded-lg px-4 py-3 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <PlusCircle size={18} />
+                    Yeni Müşteri & Satış
+                  </button>
+                </>
+              ) : null}
               <button
                 onClick={onLogout}
                 className="w-full text-sm font-semibold bg-red-600/90 text-white hover:bg-red-700 transition-colors rounded-lg px-4 py-3 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <LogOut size={18} />
-             
               </button>
             </div>
           </div>

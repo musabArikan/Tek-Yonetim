@@ -26,7 +26,10 @@ const requireAuth = async (req, res, next) => {
       return res.status(401).json({ message: "Not authorized, invalid token" });
     }
 
-    const user = await User.findById(decoded.userId).select("-password");
+    const user = await User.findOne({
+      _id: decoded.userId,
+      isDeleted: false,
+    }).select("-password");
     if (!user || String(user.tenantId) !== String(decoded.tenantId)) {
       return res
         .status(401)
@@ -39,11 +42,13 @@ const requireAuth = async (req, res, next) => {
     }
 
     req.user = {
-      tenantId: decoded.tenantId,
-      userId: decoded.userId,
-      role: decoded.role,
-      permissions: decoded.permissions || {},
-      pageLocks: decoded.pageLocks || {},
+      tenantId: String(user.tenantId),
+      userId: String(user._id),
+      ad: user.ad,
+      soyad: user.soyad,
+      role: user.role,
+      permissions: user.permissions || {},
+      pageLocks: user.pageLocks || {},
     };
 
     next();

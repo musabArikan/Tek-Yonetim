@@ -13,11 +13,21 @@ const ADMIN_EMAIL = "orhan@gunesmagaza";
 const ADMIN_PASSWORD = "123456";
 
 const products = [
-  { urunKodu: "PRF-BUZ-450", marka: "Profilo", adet: 8, serialNumbers: ["SN-PRF-450-001", "SN-PRF-450-002"] },
+  {
+    urunKodu: "PRF-BUZ-450",
+    marka: "Profilo",
+    adet: 8,
+    serialNumbers: ["SN-PRF-450-001", "SN-PRF-450-002"],
+  },
   { urunKodu: "BSH-WAT28461", marka: "Bosch", adet: 12, serialNumbers: [] },
   { urunKodu: "GPA-KUR-700", marka: "Gipa", adet: 5, serialNumbers: [] },
   { urunKodu: "PRF-CMS-9100", marka: "Profilo", adet: 15, serialNumbers: [] },
-  { urunKodu: "BSH-BUZ-520", marka: "Bosch", adet: 6, serialNumbers: ["SN-BSH-520-014"] },
+  {
+    urunKodu: "BSH-BUZ-520",
+    marka: "Bosch",
+    adet: 6,
+    serialNumbers: ["SN-BSH-520-014"],
+  },
   { urunKodu: "GPA-TV-55", marka: "Gipa", adet: 3, serialNumbers: [] },
   { urunKodu: "BSH-KUR-8000", marka: "Bosch", adet: 4, serialNumbers: [] },
   { urunKodu: "PRF-FIR-6600", marka: "Profilo", adet: 10, serialNumbers: [] },
@@ -99,6 +109,8 @@ const seed = async () => {
 
   const admin = await User.create({
     tenantId: tenant._id,
+    ad: "Orhan",
+    soyad: "Yönetici",
     email: ADMIN_EMAIL,
     password: ADMIN_PASSWORD,
     role: "admin",
@@ -113,6 +125,8 @@ const seed = async () => {
       stok: true,
       envanter: false,
       borclular: false,
+      personeller: false,
+      raporlar: false,
     },
   });
 
@@ -141,7 +155,15 @@ const seed = async () => {
       musteri: ahmet,
       islemTuru: "Satış",
       tarih: new Date("2023-09-10"),
-      urunler: [{ urunKodu: "PRF-BUZ-450", adet: 1, envanterdeBekleyenAdet: 0, envanterdeMi: false, envanterAciklamasi: "" }],
+      urunler: [
+        {
+          urunKodu: "PRF-BUZ-450",
+          adet: 1,
+          envanterdeBekleyenAdet: 0,
+          envanterdeMi: false,
+          envanterAciklamasi: "",
+        },
+      ],
       toplamTutar: 18000,
       pesinat: 3000,
       kalanHesap: 15000,
@@ -185,7 +207,15 @@ const seed = async () => {
       musteri: fatma,
       islemTuru: "Satış",
       tarih: new Date("2023-07-20"),
-      urunler: [{ urunKodu: "GPA-TV-55", adet: 1, envanterdeBekleyenAdet: 0, envanterdeMi: false, envanterAciklamasi: "" }],
+      urunler: [
+        {
+          urunKodu: "GPA-TV-55",
+          adet: 1,
+          envanterdeBekleyenAdet: 0,
+          envanterdeMi: false,
+          envanterAciklamasi: "",
+        },
+      ],
       toplamTutar: 8750,
       pesinat: 0,
       kalanHesap: 8750,
@@ -198,7 +228,13 @@ const seed = async () => {
       islemTuru: "Satış",
       tarih: new Date("2023-09-05"),
       urunler: [
-        { urunKodu: "PRF-CMS-9100", adet: 1, envanterdeBekleyenAdet: 0, envanterdeMi: false, envanterAciklamasi: "" },
+        {
+          urunKodu: "PRF-CMS-9100",
+          adet: 1,
+          envanterdeBekleyenAdet: 0,
+          envanterdeMi: false,
+          envanterAciklamasi: "",
+        },
         {
           urunKodu: "BSH-KUR-8000",
           adet: 1,
@@ -226,7 +262,12 @@ const seed = async () => {
   );
 
   const balances = new Map();
-  for (const { musteri, islemTuru, kalanHesap, pesinat } of transactionPayloads) {
+  for (const {
+    musteri,
+    islemTuru,
+    kalanHesap,
+    pesinat,
+  } of transactionPayloads) {
     const current = balances.get(String(musteri._id)) || 0;
     if (islemTuru === "Satış") {
       balances.set(String(musteri._id), current + kalanHesap);
@@ -248,7 +289,10 @@ const seed = async () => {
     for (const line of payload.urunler) {
       if (!line.envanterdeMi) continue;
       const key = line.urunKodu;
-      pendingByCode.set(key, (pendingByCode.get(key) || 0) + line.envanterdeBekleyenAdet);
+      pendingByCode.set(
+        key,
+        (pendingByCode.get(key) || 0) + line.envanterdeBekleyenAdet,
+      );
     }
   }
 

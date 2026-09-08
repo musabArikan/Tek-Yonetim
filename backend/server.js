@@ -9,6 +9,17 @@ const customerRoutes = require("./routes/customerRoutes");
 const transactionRoutes = require("./routes/transactionRoutes");
 const stockRoutes = require("./routes/stockRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
+const userRoutes = require("./routes/userRoutes");
+const dashboardRoutes = require("./routes/dashboardRoutes");
+const productRoutes = require("./routes/productRoutes");
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+});
 
 const app = express();
 const frontendDistPath = path.resolve(__dirname, "../frontend/dist");
@@ -21,12 +32,17 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        origin.startsWith("http://localhost:") ||
+        origin.startsWith("http://127.0.0.1:")
+      ) {
         callback(null, true);
         return;
       }
 
-      callback(new Error("CORS blocked: origin not allowed"));
+      callback(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -44,9 +60,20 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/stocks", stockRoutes);
 app.use("/api/inventory", inventoryRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/products", productRoutes);
 app.use(express.static(frontendDistPath));
 app.get(/^\/(?!api|health).*/, (req, res) => {
   res.sendFile(path.join(frontendDistPath, "index.html"));
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error("Unhandled API Error:", err);
+  res.status(err.status || 500).json({
+    message: err.message || "Sunucu hatası",
+  });
 });
 
 const startServer = async () => {
