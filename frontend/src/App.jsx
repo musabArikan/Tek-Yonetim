@@ -9,6 +9,8 @@ import StockManagementPage from "./pages/StockManagementPage";
 import InventoryPage from "./pages/InventoryPage";
 import DebtorsPage from "./pages/DebtorsPage";
 import UserManagementPage from "./pages/UserManagementPage";
+import TransferShipmentPage from "./pages/TransferShipmentPage";
+import CustomerFinancePage from "./pages/CustomerFinancePage";
 import CustomerList from "./components/customers/CustomerList";
 import CustomerDetails from "./components/customers/CustomerDetails";
 import PendingInventoryCard from "./components/customers/PendingInventoryCard";
@@ -63,6 +65,8 @@ const getPageFromPath = (pathname) => {
   if (pathname === "/borclular") return "borclular";
   if (pathname === "/personeller") return "personeller";
   if (pathname === "/urun-stok") return "urun-stok";
+  if (pathname === "/transferler") return "transferler";
+  if (pathname === "/musteri-finans") return "musteri-finans";
   return "home";
 };
 
@@ -174,7 +178,7 @@ function App() {
   );
   const availablePages = useMemo(
     () =>
-      ["home", "stok", "envanter", "borclular", "personeller", "urun-stok"].filter(
+      ["home", "stok", "envanter", "borclular", "personeller", "urun-stok", "transferler", "musteri-finans"].filter(
         (pageId) =>
           pageId === "home" ||
           (!isPageLocked(pageLocks, pageId) &&
@@ -432,6 +436,24 @@ function App() {
       return;
     }
 
+    if (location.pathname === "/transferler") {
+      if (isPageLocked(pageLocks, "transferler")) {
+        redirectUnauthorizedPage("transferler");
+        return;
+      }
+      setActivePage("transferler");
+      return;
+    }
+
+    if (location.pathname === "/musteri-finans") {
+      if (isPageLocked(pageLocks, "musteri-finans")) {
+        redirectUnauthorizedPage("musteri-finans");
+        return;
+      }
+      setActivePage("musteri-finans");
+      return;
+    }
+
     // Bilinmeyen rotalar için ana sayfaya yönlendir
     syncRoute("home", "/dashboard", true);
   }, [
@@ -474,6 +496,8 @@ function App() {
         borclular: "/borclular",
         personeller: "/personeller",
         "urun-stok": "/urun-stok",
+        transferler: "/transferler",
+        "musteri-finans": "/musteri-finans",
       };
 
       syncRoute(pageId, pagePathMap[pageId] ?? "/dashboard");
@@ -808,6 +832,10 @@ function App() {
               currentUserId={currentUserId}
               onSessionRefresh={refreshAuthSession}
             />
+          ) : activePage === "transferler" ? (
+            <TransferShipmentPage />
+          ) : activePage === "musteri-finans" ? (
+            <CustomerFinancePage />
           ) : null}
         </main>
 

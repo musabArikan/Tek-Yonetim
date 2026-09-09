@@ -12,6 +12,11 @@ const inventoryRoutes = require("./routes/inventoryRoutes");
 const userRoutes = require("./routes/userRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const productRoutes = require("./routes/productRoutes");
+const branchRoutes = require("./routes/branchRoutes");
+const transferRoutes = require("./routes/transferRoutes");
+const shipmentRoutes = require("./routes/shipmentRoutes");
+const installmentRoutes = require("./routes/installmentRoutes");
+const collectionRoutes = require("./routes/collectionRoutes");
 
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection:", reason);
@@ -63,6 +68,11 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/products", productRoutes);
+app.use("/api/branches", branchRoutes);
+app.use("/api/transfers", transferRoutes);
+app.use("/api/shipments", shipmentRoutes);
+app.use("/api/installments", installmentRoutes);
+app.use("/api/collections", collectionRoutes);
 app.use(express.static(frontendDistPath));
 app.get(/^\/(?!api|health).*/, (req, res) => {
   res.sendFile(path.join(frontendDistPath, "index.html"));
