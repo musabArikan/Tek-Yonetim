@@ -1,6 +1,7 @@
 const Product = require("../models/Product");
 const StockHistory = require("../models/StockHistory");
 const { getTenantId, getUserId, withTenant } = require("../utils/tenantScope");
+const { logAction } = require("../utils/auditLogger");
 
 // ─── Yardımcı ─────────────────────────────────────────────────────────────────
 const activeProducts = (req, extra = {}) =>
@@ -47,8 +48,11 @@ const createProduct = async (req, res) => {
       satisFiyati: Number(satisFiyati) || 0,
       mevcutStok: Number(mevcutStok) || 0,
       kritikStokSeviyesi: Number(kritikStokSeviyesi) ?? 5,
+      garantiSuresi: Number(req.body.garantiSuresi) || 0,
+      tedarikci: (req.body.tedarikci || "").trim(),
     });
 
+    logAction(req, "URUN_EKLE", "Product", product._id, { ad: product.ad });
     res.status(201).json(product);
   } catch (error) {
     if (error.code === 11000) {
@@ -75,6 +79,8 @@ const updateProduct = async (req, res) => {
       "alisFiyati",
       "satisFiyati",
       "kritikStokSeviyesi",
+      "garantiSuresi",
+      "tedarikci",
     ];
 
     allowed.forEach((field) => {
@@ -87,6 +93,7 @@ const updateProduct = async (req, res) => {
     });
 
     await product.save();
+    logAction(req, "URUN_GUNCELLE", "Product", product._id, { ad: product.ad });
     res.status(200).json(product);
   } catch (error) {
     if (error.code === 11000) {

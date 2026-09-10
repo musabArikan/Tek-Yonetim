@@ -59,6 +59,22 @@ const userSchema = new mongoose.Schema(
         type: Boolean,
         default: false,
       },
+      zRaporuAlabilir: {
+        type: Boolean,
+        default: false,
+      },
+      excelExportEdebilir: {
+        type: Boolean,
+        default: false,
+      },
+    },
+    // Admin'in belirli sayfalara atadığı özel erişim şifreleri (bcrypt hash)
+    pagePasswords: {
+      finans: { type: String, default: "" },
+      stok: { type: String, default: "" },
+      raporlar: { type: String, default: "" },
+      envanter: { type: String, default: "" },
+      transferler: { type: String, default: "" },
     },
     pageLocks: {
       stok: {

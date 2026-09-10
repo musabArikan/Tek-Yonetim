@@ -56,6 +56,18 @@ const productSchema = new mongoose.Schema(
       default: 5,
       min: 0,
     },
+    // --- Tedarik & Garanti ---
+    garantiSuresi: {
+      type: Number,
+      default: 0,
+      min: 0,
+      comment: "Ay cinsinden garanti süresi",
+    },
+    tedarikci: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     // --- Soft-delete ---
     isDeleted: {
       type: Boolean,

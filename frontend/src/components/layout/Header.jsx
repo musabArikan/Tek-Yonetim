@@ -2,13 +2,15 @@ import { useState } from "react";
 import { Tag, PlusCircle, Menu, X, LogOut } from "lucide-react";
 
 const navItems = [
-  { id: "home", label: "Ana Sayfa" },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "musteriler", label: "Müşteriler" },
   { id: "stok", label: "Stok" },
   { id: "urun-stok", label: "Ürün & Stok" },
   { id: "envanter", label: "Emanetler" },
   { id: "borclular", label: "Borçlular" },
   { id: "transferler", label: "Transferler" },
   { id: "musteri-finans", label: "Finans & Senetler" },
+  { id: "raporlar", label: "Raporlar" },
   { id: "personeller", label: "Personeller" },
 ];
 

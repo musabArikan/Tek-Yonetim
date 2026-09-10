@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { KeyRound, Pencil, PlusCircle, Trash2, Users } from "lucide-react";
+import { KeyRound, Pencil, PlusCircle, Trash2, Users, Lock } from "lucide-react";
 import { toast } from "react-toastify";
 import Modal from "../components/modals/Modal";
 import { FormField, TextInput, SelectInput } from "../components/ui/FormField";
@@ -10,6 +10,7 @@ import {
   updateUser,
   changePassword,
 } from "../services/userService";
+import { setUserPagePassword } from "../services/reAuthService";
 
 const roleOptions = [
   { value: "admin", label: "Admin" },
@@ -25,6 +26,8 @@ const permissionOptions = [
   { key: "satisYapabilir", label: "Satış Yapabilir" },
   { key: "stokDuzenleyebilir", label: "Stok Düzenleyebilir" },
   { key: "envanterDuzenleyebilir", label: "Envanter Düzenleyebilir" },
+  { key: "zRaporuAlabilir", label: "Z-Raporu Alabilir" },
+  { key: "excelExportEdebilir", label: "Excel Export Alabilir" },
 ];
 
 const pageLockOptions = [
@@ -86,6 +89,22 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
   const [newPassword, setNewPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [isSavingPassword, setIsSavingPassword] = useState(false);
+
+  // Sayfa Şifreleri modal state'leri
+  const [isPagePasswordModalOpen, setIsPagePasswordModalOpen] = useState(false);
+  const [pagePasswordTargetUser, setPagePasswordTargetUser] = useState(null);
+  const [pagePasswordInputs, setPagePasswordInputs] = useState({
+    finans: "", stok: "", raporlar: "", envanter: "", transferler: ""
+  });
+  const [isSavingPagePassword, setIsSavingPagePassword] = useState({});
+
+  const PAGE_LABELS = {
+    finans: "Müşteri Finans",
+    stok: "Stok",
+    raporlar: "Raporlar",
+    envanter: "Envanter",
+    transferler: "Transferler"
+  };
 
   const modalTitle = editingUser ? "Personel Düzenle" : "Yeni Personel Ekle";
 
@@ -161,6 +180,36 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
     setPasswordTargetUser(null);
     setNewPassword("");
     setPasswordError("");
+  };
+
+  // Sayfa şifresi modal yardımcıları
+  const openPagePasswordModal = (user) => {
+    setPagePasswordTargetUser(user);
+    setPagePasswordInputs({ finans: "", stok: "", raporlar: "", envanter: "", transferler: "" });
+    setIsPagePasswordModalOpen(true);
+  };
+
+  const closePagePasswordModal = () => {
+    setIsPagePasswordModalOpen(false);
+    setPagePasswordTargetUser(null);
+  };
+
+  const handleSetPagePassword = async (page) => {
+    const pwd = pagePasswordInputs[page];
+    setIsSavingPagePassword((prev) => ({ ...prev, [page]: true }));
+    try {
+      await setUserPagePassword(pagePasswordTargetUser.id, page, pwd);
+      toast.success(
+        pwd 
+          ? `${PAGE_LABELS[page]} sayfası şifresi güncellendi` 
+          : `${PAGE_LABELS[page]} sayfası şifresi kaldırıldı`
+      );
+      setPagePasswordInputs((prev) => ({ ...prev, [page]: "" }));
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Sayfa şifresi güncellenemedi");
+    } finally {
+      setIsSavingPagePassword((prev) => ({ ...prev, [page]: false }));
+    }
   };
 
   const handleFieldChange = (field) => (event) => {
@@ -403,6 +452,18 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
                       </td>
                       <td className="p-4">
                         <div className="flex items-center justify-end gap-2">
+                          {/* Sayfa Kilidi butonu — kendi hesabı hariç */}
+                          {!isSelf && (
+                            <button
+                              type="button"
+                              onClick={() => openPagePasswordModal(user)}
+                              title="Sayfa Şifreleri"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-3 py-2 text-xs font-semibold text-on-surface transition-colors hover:bg-surface cursor-pointer"
+                            >
+                              <Lock size={14} />
+                              Sayfa Kilidi
+                            </button>
+                          )}
                           {/* Şifre değiştir butonu — kendi hesabı hariç */}
                           {!isSelf && (
                             <button
@@ -619,6 +680,61 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Sayfa Şifreleri Modalı */}
+      <Modal
+        isOpen={isPagePasswordModalOpen}
+        onClose={closePagePasswordModal}
+        title={
+          pagePasswordTargetUser
+            ? `${pagePasswordTargetUser.ad} ${pagePasswordTargetUser.soyad} — Sayfa Şifreleri`
+            : "Sayfa Şifreleri"
+        }
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-on-surface-variant">
+            Aşağıdaki sayfalar için erişim şifresi belirleyebilirsiniz. Şifre belirlediğiniz sayfalara girilirken personelden bu şifre istenecektir. Kaldırmak için alanı boş bırakıp "Kaldır" butonuna tıklayın.
+          </p>
+          <div className="flex flex-col gap-3">
+            {Object.entries(PAGE_LABELS).map(([key, label]) => (
+              <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 rounded-xl border border-outline-variant bg-surface-container-lowest p-3">
+                <div className="flex-1 text-sm font-medium text-on-surface">
+                  {label}
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="password"
+                    placeholder="Şifre"
+                    value={pagePasswordInputs[key]}
+                    onChange={(e) =>
+                      setPagePasswordInputs((prev) => ({ ...prev, [key]: e.target.value }))
+                    }
+                    className="w-24 rounded-lg border border-outline-variant bg-surface px-3 py-1.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSetPagePassword(key)}
+                    disabled={isSavingPagePassword[key]}
+                    className="rounded-lg bg-primary-container text-white px-3 py-1.5 text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer min-w-[70px]"
+                  >
+                    {isSavingPagePassword[key] ? "..." : (pagePasswordInputs[key] ? "Güncelle" : "Kaldır")}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end pt-4 border-t border-outline-variant">
+            <button
+              type="button"
+              onClick={closePagePasswordModal}
+              className="rounded-lg border border-outline-variant px-4 py-2 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container cursor-pointer"
+            >
+              Kapat
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

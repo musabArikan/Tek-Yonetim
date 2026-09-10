@@ -6,6 +6,7 @@ const {
   deleteUser,
   changePassword,
 } = require("../controllers/userController");
+const { setPagePassword } = require("../controllers/reAuthController");
 const { requireAuth } = require("../middlewares/authMiddleware");
 const { requireRole } = require("../middlewares/authorize");
 
@@ -26,5 +27,9 @@ router
 router
   .route("/:id/password")
   .patch(requireAuth, adminOrManager, changePassword);
+
+router
+  .route("/:id/page-password")
+  .patch(requireAuth, adminOrManager, setPagePassword);
 
 module.exports = router;

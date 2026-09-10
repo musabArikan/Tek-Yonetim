@@ -4,6 +4,8 @@ const defaultPermissions = {
   satisYapabilir: false,
   stokDuzenleyebilir: false,
   envanterDuzenleyebilir: false,
+  zRaporuAlabilir: false,
+  excelExportEdebilir: false,
 };
 
 const defaultPageLocks = {

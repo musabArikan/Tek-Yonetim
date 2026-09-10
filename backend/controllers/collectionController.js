@@ -3,6 +3,7 @@ const Collection = require("../models/Collection");
 const Installment = require("../models/Installment");
 const Customer = require("../models/Customer");
 const { getTenantId, getUserId, withTenant } = require("../utils/tenantScope");
+const { logAction } = require("../utils/auditLogger");
 
 // POST /api/collections
 const createCollection = async (req, res) => {
@@ -79,6 +80,12 @@ const createCollection = async (req, res) => {
       .populate("collectedBy", "ad soyad")
       .populate("installmentId", "installmentNumber dueDate amount");
 
+    // Audit log
+    logAction(req, "TAHSILAT_AL", "Collection", collection._id, {
+      customerId,
+      amount,
+      paymentMethod: paymentMethod || "Nakit",
+    });
     res.status(201).json(populated);
   } catch (error) {
     if (error.statusCode) {

@@ -11,6 +11,7 @@ import DebtorsPage from "./pages/DebtorsPage";
 import UserManagementPage from "./pages/UserManagementPage";
 import TransferShipmentPage from "./pages/TransferShipmentPage";
 import CustomerFinancePage from "./pages/CustomerFinancePage";
+import ZRaporuPage from "./pages/ZRaporuPage";
 import CustomerList from "./components/customers/CustomerList";
 import CustomerDetails from "./components/customers/CustomerDetails";
 import PendingInventoryCard from "./components/customers/PendingInventoryCard";
@@ -18,7 +19,10 @@ import TransactionTable from "./components/customers/TransactionTable";
 import NewCustomerSaleModal from "./components/modals/NewCustomerSaleModal";
 import ExistingCustomerSaleModal from "./components/modals/ExistingCustomerSaleModal";
 import CollectionModal from "./components/modals/CollectionModal";
+import ReAuthModal, { isReAuthGranted } from "./components/modals/ReAuthModal";
 import LoginPage from "./pages/LoginPage";
+import DashboardPage from "./pages/DashboardPage";
+import CustomersPage from "./pages/CustomersPage";
 import {
   getTotalReceivables,
   getCustomerTransactions,
@@ -67,7 +71,10 @@ const getPageFromPath = (pathname) => {
   if (pathname === "/urun-stok") return "urun-stok";
   if (pathname === "/transferler") return "transferler";
   if (pathname === "/musteri-finans") return "musteri-finans";
-  return "home";
+  if (pathname === "/raporlar") return "raporlar";
+  if (pathname === "/dashboard") return "dashboard";
+  if (pathname === "/musteriler") return "musteriler";
+  return "";
 };
 
 const normalizeCustomer = (customer) => {
@@ -163,6 +170,9 @@ function App() {
   const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [stockError, setStockError] = useState("");
+  // Re-Auth modal state
+  const [reAuthPage, setReAuthPage] = useState(null); // hangi sayfa re-auth istedi
+  const [pendingPage, setPendingPage] = useState(null); // onaylanınca gidilecek page
   const submitGuardRef = useRef(false);
   const userRole = authSession?.role || "";
   const currentUserId = authSession?.userId || "";
@@ -178,13 +188,18 @@ function App() {
   );
   const availablePages = useMemo(
     () =>
-      ["home", "stok", "envanter", "borclular", "personeller", "urun-stok", "transferler", "musteri-finans"].filter(
+      ["dashboard", "musteriler", "stok", "envanter", "borclular", "personeller", "urun-stok", "transferler", "musteri-finans", "raporlar"].filter(
         (pageId) =>
-          pageId === "home" ||
+          pageId === "musteriler" ||
+          (pageId === "dashboard" && isAdmin) ||
+          (pageId === "personeller" && isAdmin) ||
+          (pageId === "raporlar" && isAdmin) ||
           (!isPageLocked(pageLocks, pageId) &&
-            (pageId !== "personeller" || isAdminOrManager)),
+            pageId !== "personeller" &&
+            pageId !== "raporlar" &&
+            pageId !== "dashboard"),
       ),
-    [isAdminOrManager, pageLocks],
+    [isAdmin, pageLocks],
   );
   const canDeleteCustomer = hasPermission(permissions, "musteriSilebilir");
   const canCollectPayment = hasPermission(permissions, "tahsilatAlabilir");
@@ -268,7 +283,7 @@ function App() {
       toast.error("Yetkisiz Erişim: Bu sayfayı görüntüleme yetkiniz yok.", {
         toastId: `page-lock-${pageId}`,
       });
-      syncRoute("home", "/dashboard", true);
+      syncRoute("musteriler", "/musteriler", true);
     },
     [syncRoute],
   );
@@ -325,32 +340,34 @@ function App() {
     }
   }, [selectedCustomerId]);
 
+  // Auth redirect effect — sadece giriş/çıkış durumunu izler
   useEffect(() => {
     if (!isAuthenticated) {
       setActivePage("home");
       if (location.pathname !== "/login") {
         navigate("/login", { replace: true });
       }
-      return;
     }
+  }, [isAuthenticated, location.pathname, navigate]);
+
+  // Veri yükleme effect — SADECE isAuthenticated değişiminde çalışır
+  // location.pathname bağımlılığı kasıtlı olarak kaldırıldı: her sayfa geçişinde
+  // yeniden veri çekilmesini ve token state'inin sıfırlanmasını önler.
+  useEffect(() => {
+    if (!isAuthenticated) return;
 
     const loadData = async () => {
       setIsLoading(true);
+      setIsStockLoading(true);
       setSubmitError("");
+      setStockError("");
 
       try {
-        // Stok verileri her zaman yüklenir (global state'e dolması için)
-        const requests = [getCustomers(), getTransactions(), getStocks()];
-        setIsStockLoading(true);
-        setStockError("");
-
-        const responses = await Promise.all(requests);
         const [customersResponse, transactionsResponse, stocksResponse] =
-          responses;
+          await Promise.all([getCustomers(), getTransactions(), getStocks()]);
 
         const normalizedCustomers = customersResponse.map(normalizeCustomer);
-        const normalizedTransactions =
-          transactionsResponse.map(normalizeTransaction);
+        const normalizedTransactions = transactionsResponse.map(normalizeTransaction);
         const normalizedStocks = stocksResponse.map(normalizeStock);
 
         setCustomers(normalizedCustomers);
@@ -371,7 +388,8 @@ function App() {
     };
 
     loadData();
-  }, [isAuthenticated, location.pathname, navigate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -381,8 +399,22 @@ function App() {
       return;
     }
 
+    const hasPagePasswords = authSession?.hasPagePasswords || {};
+    const checkPassword = (pageId, reAuthKey) => {
+      if (hasPagePasswords[reAuthKey] && !isReAuthGranted(reAuthKey)) {
+        setPendingPage(pageId);
+        setReAuthPage(reAuthKey);
+        return false;
+      }
+      return true;
+    };
+
     if (location.pathname === "/") {
-      syncRoute("home", "/dashboard", true);
+      if (isAdmin) {
+        syncRoute("dashboard", "/dashboard", true);
+      } else {
+        syncRoute("musteriler", "/musteriler", true);
+      }
       return;
     }
 
@@ -391,12 +423,22 @@ function App() {
         redirectUnauthorizedPage("stok");
         return;
       }
+      if (!checkPassword("stok", "stok")) return;
       setActivePage("stok");
       return;
     }
 
     if (location.pathname === "/dashboard") {
-      setActivePage("home");
+      if (!isAdmin) {
+        redirectUnauthorizedPage("dashboard");
+        return;
+      }
+      setActivePage("dashboard");
+      return;
+    }
+
+    if (location.pathname === "/musteriler") {
+      setActivePage("musteriler");
       return;
     }
 
@@ -410,7 +452,7 @@ function App() {
     }
 
     if (location.pathname === "/personeller") {
-      if (!isAdminOrManager || isPageLocked(pageLocks, "personeller")) {
+      if (!isAdmin) {
         redirectUnauthorizedPage("personeller");
         return;
       }
@@ -423,6 +465,7 @@ function App() {
         redirectUnauthorizedPage("envanter");
         return;
       }
+      if (!checkPassword("envanter", "envanter")) return;
       setActivePage("envanter");
       return;
     }
@@ -441,6 +484,7 @@ function App() {
         redirectUnauthorizedPage("transferler");
         return;
       }
+      if (!checkPassword("transferler", "transferler")) return;
       setActivePage("transferler");
       return;
     }
@@ -450,15 +494,28 @@ function App() {
         redirectUnauthorizedPage("musteri-finans");
         return;
       }
+      if (!checkPassword("musteri-finans", "finans")) return;
       setActivePage("musteri-finans");
       return;
     }
 
+    if (location.pathname === "/raporlar") {
+      if (!isAdmin) {
+        redirectUnauthorizedPage("raporlar");
+        return;
+      }
+      if (!checkPassword("raporlar", "raporlar")) return;
+      setActivePage("raporlar");
+      return;
+    }
+
     // Bilinmeyen rotalar için ana sayfaya yönlendir
-    syncRoute("home", "/dashboard", true);
+    const defaultPath = isAdmin ? "/dashboard" : "/musteriler";
+    const defaultPage = isAdmin ? "dashboard" : "musteriler";
+    syncRoute(defaultPage, defaultPath, true);
   }, [
     authSession,
-    isAdminOrManager,
+    isAdmin,
     pageLocks,
     redirectUnauthorizedPage,
     isAuthenticated,
@@ -489,8 +546,17 @@ function App() {
         return;
       }
 
+      // Check if the page is password-protected for this user
+      const hasPagePasswords = authSession?.hasPagePasswords || {};
+      const reAuthKey = pageId === "musteri-finans" ? "finans" : pageId;
+      if (hasPagePasswords[reAuthKey]) {
+        navigateWithReAuth(pageId, reAuthKey);
+        return;
+      }
+
       const pagePathMap = {
-        home: "/dashboard",
+        dashboard: "/dashboard",
+        musteriler: "/musteriler",
         stok: "/stok",
         envanter: "/envanter",
         borclular: "/borclular",
@@ -498,11 +564,39 @@ function App() {
         "urun-stok": "/urun-stok",
         transferler: "/transferler",
         "musteri-finans": "/musteri-finans",
+        raporlar: "/raporlar",
       };
 
-      syncRoute(pageId, pagePathMap[pageId] ?? "/dashboard");
+      const defaultPath = isAdmin ? "/dashboard" : "/musteriler";
+      syncRoute(pageId, pagePathMap[pageId] ?? defaultPath);
     },
-    [pageLocks, redirectUnauthorizedPage, syncRoute],
+    [pageLocks, redirectUnauthorizedPage, syncRoute, authSession, isAdmin],
+  );
+
+  // Re-Auth gerektiren sayfalara geçiş
+  const navigateWithReAuth = useCallback(
+    (pageId, reAuthKey) => {
+      if (isReAuthGranted(reAuthKey)) {
+        const pagePathMap = {
+          dashboard: "/dashboard",
+          musteriler: "/musteriler",
+          stok: "/stok",
+          envanter: "/envanter",
+          borclular: "/borclular",
+          personeller: "/personeller",
+          "urun-stok": "/urun-stok",
+          transferler: "/transferler",
+          "musteri-finans": "/musteri-finans",
+          raporlar: "/raporlar",
+        };
+        const defaultPath = isAdmin ? "/dashboard" : "/musteriler";
+        syncRoute(pageId, pagePathMap[pageId] ?? defaultPath);
+        return;
+      }
+      setPendingPage(pageId);
+      setReAuthPage(reAuthKey);
+    },
+    [syncRoute, isAdmin],
   );
 
   const performDeleteCustomer = useCallback(
@@ -532,12 +626,12 @@ function App() {
   );
 
   const handleSelectCustomer = useCallback(
-    (customerId, nextPage = "home") => {
+    (customerId, nextPage = "musteri-finans") => {
       setSelectedCustomerId(customerId);
       setSearchQuery("");
 
-      if (nextPage === "home") {
-        syncRoute("home", "/dashboard");
+      if (nextPage === "musteriler") {
+        syncRoute("musteriler", "/musteriler");
         return;
       }
 
@@ -766,46 +860,16 @@ function App() {
               {submitError}
             </div>
           ) : null}
-
-          {activePage === "home" ? (
-            <>
-              {isLoading ? (
-                <div className="rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-6 text-sm text-on-surface-variant">
-                  Yükleniyor...
-                </div>
-              ) : null}
-
-              <SummaryCards
-                customerCount={customers.length}
-                transactionCount={transactions.length}
-                totalReceivables={totalReceivables}
-              />
-
-              <div className="flex flex-col lg:flex-row gap-6 grow">
-                <CustomerList
-                  customers={filteredCustomers}
-                  selectedId={selectedCustomerId}
-                  searchQuery={searchQuery}
-                  onSearchChange={setSearchQuery}
-                  onSelect={handleSelectCustomer}
-                />
-
-                <div className="w-full lg:w-2/3 flex flex-col gap-4 min-h-150">
-                  <CustomerDetails
-                    customer={selectedCustomer}
-                    onAddCollection={() => setShowCollectionModal(true)}
-                    onDeleteCustomer={handleDeleteCustomer}
-                    isDeletingCustomer={isDeletingCustomer}
-                    canCollect={canCollectPayment}
-                    canDeleteCustomer={canDeleteCustomer}
-                  />
-                  {selectedCustomer && (
-                    <PendingInventoryCard items={customerInventoryItems} />
-                  )}
-                  <TransactionTable transactions={customerTransactions} />
-                </div>
-              </div>
-            </>
+          {activePage === "dashboard" ? (
+            <DashboardPage onNewCustomerSale={() => setShowNewCustomerModal(true)} />
+          ) : activePage === "musteriler" ? (
+            <CustomersPage
+              customers={filteredCustomers}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              onSelectCustomer={(id) => handleSelectCustomer(id, "musteri-finans")}
+              onNewCustomerSale={() => setShowNewCustomerModal(true)}
+            />
           ) : activePage === "stok" ? (
             <StockPage
               stock={stock}
@@ -835,7 +899,9 @@ function App() {
           ) : activePage === "transferler" ? (
             <TransferShipmentPage />
           ) : activePage === "musteri-finans" ? (
-            <CustomerFinancePage />
+            <CustomerFinancePage initialCustomerId={selectedCustomerId} />
+          ) : activePage === "raporlar" ? (
+            <ZRaporuPage />
           ) : null}
         </main>
 
@@ -878,6 +944,24 @@ function App() {
       </div>
 
       <ToastContainer position="top-right" autoClose={3000} />
+
+      {/* Re-Auth Modal */}
+      {reAuthPage && (
+        <ReAuthModal
+          page={reAuthPage}
+          onGranted={() => {
+            setReAuthPage(null);
+            if (pendingPage) {
+              handlePageChange(pendingPage);
+              setPendingPage(null);
+            }
+          }}
+          onCancel={() => {
+            setReAuthPage(null);
+            setPendingPage(null);
+          }}
+        />
+      )}
     </>
   );
 }

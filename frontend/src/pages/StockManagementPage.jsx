@@ -47,6 +47,8 @@ const EMPTY_PRODUCT = {
   satisFiyati: "",
   mevcutStok: "",
   kritikStokSeviyesi: "5",
+  garantiSuresi: "0",
+  tedarikci: "",
 };
 
 const MOVEMENT_TYPES = ["Giriş", "Çıkış", "Transfer"];
@@ -119,6 +121,8 @@ function ProductFormModal({ isOpen, onClose, onSave, initial = null }) {
               satisFiyati: String(initial.satisFiyati ?? ""),
               mevcutStok: String(initial.mevcutStok ?? ""),
               kritikStokSeviyesi: String(initial.kritikStokSeviyesi ?? "5"),
+              garantiSuresi: String(initial.garantiSuresi ?? "0"),
+              tedarikci: initial.tedarikci || "",
             }
           : EMPTY_PRODUCT,
       );
@@ -141,6 +145,8 @@ function ProductFormModal({ isOpen, onClose, onSave, initial = null }) {
         satisFiyati: Number(form.satisFiyati) || 0,
         mevcutStok: Number(form.mevcutStok) || 0,
         kritikStokSeviyesi: Number(form.kritikStokSeviyesi) ?? 5,
+        garantiSuresi: Number(form.garantiSuresi) || 0,
+        tedarikci: (form.tedarikci || "").trim(),
       });
       onClose();
     } catch {
@@ -205,6 +211,21 @@ function ProductFormModal({ isOpen, onClose, onSave, initial = null }) {
             step="1"
             value={form.kritikStokSeviyesi}
             onChange={set("kritikStokSeviyesi")}
+          />
+          <Field
+            label="Garanti Süresi (Ay)"
+            id="pf-garanti"
+            type="number"
+            min="0"
+            step="1"
+            value={form.garantiSuresi}
+            onChange={set("garantiSuresi")}
+          />
+          <Field
+            label="Tedarikçi"
+            id="pf-tedarikci"
+            value={form.tedarikci}
+            onChange={set("tedarikci")}
           />
         </div>
 

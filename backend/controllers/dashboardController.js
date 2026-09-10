@@ -1,135 +1,94 @@
 const mongoose = require("mongoose");
-const Transaction = require("../models/Transaction");
-const Customer = require("../models/Customer");
-const Stock = require("../models/Stock");
-
-// Kritik stok eşiği: Bu değerin altındaki stoklar "kritik" sayılır
-const CRITICAL_STOCK_THRESHOLD = 3;
+const Collection = require("../models/Collection");
+const Installment = require("../models/Installment");
+const Shipment = require("../models/Shipment");
+const Product = require("../models/Product");
 
 /**
  * GET /api/dashboard/summary
- * Tenant'a özgü özet dashboard verilerini döner.
- * Her aggregation'da ilk $match her zaman tenantId ile başlar.
+ * Tenant'a özgü C-Level özet dashboard verilerini döner.
  */
 const getDashboardSummary = async (req, res) => {
   try {
     const tenantObjectId = new mongoose.Types.ObjectId(req.user.tenantId);
 
-    // Günün başı ve sonu (UTC)
     const now = new Date();
-    const startOfDay = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0)
-    );
-    const endOfDay = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999)
-    );
+    // Start of today (local time mapping to UTC if preferred, but let's just use local start/end as standard)
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-    // Ayın başı
-    const startOfMonth = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0)
-    );
-
-    // ── 1. Günlük & Aylık Satış Toplamı (Kasa) ─────────────────────────────
-    // islemTuru === "Satış" olan, silinmemiş işlemler
-    const [kasaResult] = await Transaction.aggregate([
+    // 1. Bugünün Kasa Tahsilatı
+    const gunlukKasaResult = await Collection.aggregate([
       {
         $match: {
           tenantId: tenantObjectId,
           isDeleted: false,
-          islemTuru: "Satış",
+          collectionDate: { $gte: startOfDay, $lte: endOfDay },
         },
       },
-      {
-        $facet: {
-          gunluk: [
-            { $match: { tarih: { $gte: startOfDay, $lte: endOfDay } } },
-            { $group: { _id: null, toplam: { $sum: "$toplamTutar" } } },
-          ],
-          aylik: [
-            { $match: { tarih: { $gte: startOfMonth } } },
-            { $group: { _id: null, toplam: { $sum: "$toplamTutar" } } },
-          ],
-        },
-      },
-      {
-        $project: {
-          gunlukSatis: { $ifNull: [{ $arrayElemAt: ["$gunluk.toplam", 0] }, 0] },
-          aylikSatis: { $ifNull: [{ $arrayElemAt: ["$aylik.toplam", 0] }, 0] },
-        },
-      },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
+    const gunlukKasa = gunlukKasaResult[0]?.total || 0;
 
-    // ── 2. Bekleyen / Açık Alacaklar (Müşterilerin ödenmemiş bakiyeleri) ───
-    // Customer.toplamKalanBakiye > 0 olan, silinmemiş müşterilerin toplamı
-    const [alacaklarResult] = await Customer.aggregate([
+    // 2. Vadesi Geçen Toplam Alacak
+    const vadesiGecenResult = await Installment.aggregate([
       {
         $match: {
           tenantId: tenantObjectId,
           isDeleted: false,
-          toplamKalanBakiye: { $gt: 0 },
+          isPaid: false,
+          dueDate: { $lt: startOfDay }, // Vadesi bugünden önce bitmiş
         },
       },
-      {
-        $group: {
-          _id: null,
-          toplamAlacak: { $sum: "$toplamKalanBakiye" },
-          alacakliMusteriSayisi: { $sum: 1 },
-        },
-      },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
+    const vadesiGecenAlacak = vadesiGecenResult[0]?.total || 0;
 
-    // ── 3. Kritik Stok Uyarısı ─────────────────────────────────────────────
-    // adet <= CRITICAL_STOCK_THRESHOLD olan ürünler
-    const kritikStoklar = await Stock.find({
+    // Vadesi geçen en riskli 5 taksit (en eski tarihli olanlar)
+    const riskliTaksitler = await Installment.find({
       tenantId: tenantObjectId,
-      adet: { $lte: CRITICAL_STOCK_THRESHOLD },
+      isDeleted: false,
+      isPaid: false,
+      dueDate: { $lt: startOfDay },
     })
-      .select("urunKodu marka adet envanterdekiAdet -_id")
+      .sort({ dueDate: 1 })
+      .limit(5)
+      .populate("customerId", "ad soyad telefon")
       .lean();
 
-    // ── 4. Bekleyen Envanter (envanterdekiAdet > 0: müşteride teslim bekleyen) ──
-    const [envanterResult] = await Transaction.aggregate([
-      {
-        $match: {
-          tenantId: tenantObjectId,
-          isDeleted: false,
-          islemTuru: "Satış",
-        },
-      },
-      { $unwind: "$urunler" },
-      {
-        $match: {
-          "urunler.envanterdeMi": true,
-          "urunler.envanterdeBekleyenAdet": { $gt: 0 },
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          bekleyenTeslimatSayisi: { $sum: 1 },
-          bekleyenToplamAdet: { $sum: "$urunler.envanterdeBekleyenAdet" },
-        },
-      },
-    ]);
+    // 3. Bugünün Sevkiyatları
+    const bugunkuSevkiyatlar = await Shipment.find({
+      tenantId: tenantObjectId,
+      deliveryDate: { $gte: startOfDay, $lte: endOfDay },
+    })
+      .populate("customerId", "ad soyad adres telefon")
+      .lean();
+    const sevkiyatSayisi = bugunkuSevkiyatlar.length;
+
+    // 4. Kritik Stok Seviyesi (Stoğu 5 ve altında olan ürün sayısı)
+    const kritikStokCount = await Product.countDocuments({
+      tenantId: tenantObjectId,
+      isDeleted: false,
+      mevcutStok: { $lte: 5 },
+    });
+
+    // 5. Son Hareketler (Recent Activity)
+    const ActionLog = require("../models/ActionLog");
+    const sonHareketler = await ActionLog.find({ tenantId: tenantObjectId })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean();
 
     res.status(200).json({
-      kasa: {
-        gunlukSatis: kasaResult?.gunlukSatis ?? 0,
-        aylikSatis: kasaResult?.aylikSatis ?? 0,
+      gunlukKasa,
+      vadesiGecenAlacak,
+      bugunkuSevkiyatlar: {
+        sayi: sevkiyatSayisi,
+        liste: bugunkuSevkiyatlar,
       },
-      alacaklar: {
-        toplamAlacak: alacaklarResult?.toplamAlacak ?? 0,
-        alacakliMusteriSayisi: alacaklarResult?.alacakliMusteriSayisi ?? 0,
-      },
-      kritikStok: {
-        esik: CRITICAL_STOCK_THRESHOLD,
-        urunSayisi: kritikStoklar.length,
-        urunler: kritikStoklar,
-      },
-      bekleyenEnvanter: {
-        bekleyenTeslimatSayisi: envanterResult?.bekleyenTeslimatSayisi ?? 0,
-        bekleyenToplamAdet: envanterResult?.bekleyenToplamAdet ?? 0,
-      },
+      kritikStokSayisi: kritikStokCount,
+      riskliTaksitler,
+      sonHareketler,
     });
   } catch (error) {
     console.error("Dashboard summary error:", error);

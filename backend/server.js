@@ -17,6 +17,8 @@ const transferRoutes = require("./routes/transferRoutes");
 const shipmentRoutes = require("./routes/shipmentRoutes");
 const installmentRoutes = require("./routes/installmentRoutes");
 const collectionRoutes = require("./routes/collectionRoutes");
+const exportRoutes = require("./routes/exportRoutes");
+const reportRoutes = require("./routes/reportRoutes");
 
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection:", reason);
@@ -73,6 +75,8 @@ app.use("/api/transfers", transferRoutes);
 app.use("/api/shipments", shipmentRoutes);
 app.use("/api/installments", installmentRoutes);
 app.use("/api/collections", collectionRoutes);
+app.use("/api/export", exportRoutes);
+app.use("/api/reports", reportRoutes);
 app.use(express.static(frontendDistPath));
 app.get(/^\/(?!api|health).*/, (req, res) => {
   res.sendFile(path.join(frontendDistPath, "index.html"));
@@ -100,7 +104,7 @@ const startServer = async () => {
   await connectDB();
 
   const PORT = process.env.PORT;
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server listening on port ${PORT}`);
   });
 };

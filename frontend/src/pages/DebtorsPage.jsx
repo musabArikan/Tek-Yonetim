@@ -1,12 +1,35 @@
+import { useState } from "react";
+import { Bell } from "lucide-react";
+import { toast } from "react-toastify";
 import { formatCurrency, getFullName } from "../utils/formatters";
+import api from "../utils/api";
 
 export default function DebtorsPage({ customers, onSelectCustomer }) {
+  const [sendingId, setSendingId] = useState(null);
+
   const debtors = customers
     .filter((customer) => Number(customer.toplamKalanBakiye || 0) > 0)
     .sort(
       (a, b) =>
         Number(b.toplamKalanBakiye || 0) - Number(a.toplamKalanBakiye || 0),
     );
+
+  const handleSendReminder = async (e, customer) => {
+    e.stopPropagation(); // Müşteri satırına tıklamayı engelle
+    setSendingId(customer.id);
+    try {
+      await api.post("/reports/send-reminder", {
+        customerId: customer.id,
+        message: `Sayın ${getFullName(customer)}, ${formatCurrency(customer.toplamKalanBakiye)} tutarındaki borcunuzu ödemenizi rica ederiz.`,
+        channel: "sms",
+      });
+      toast.success(`${getFullName(customer)} için hatırlatıcı gönderildi`);
+    } catch (err) {
+      toast.error("Hatırlatıcı gönderilemedi: " + (err?.response?.data?.message || err.message));
+    } finally {
+      setSendingId(null);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -49,6 +72,9 @@ export default function DebtorsPage({ customers, onSelectCustomer }) {
                   <th className="p-4 text-xs font-semibold text-on-surface-variant text-right">
                     Kalan Borç
                   </th>
+                  <th className="p-4 text-xs font-semibold text-on-surface-variant text-center">
+                    Hatırlat
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -69,6 +95,17 @@ export default function DebtorsPage({ customers, onSelectCustomer }) {
                     </td>
                     <td className="p-4 text-sm font-semibold text-error text-right">
                       {formatCurrency(customer.toplamKalanBakiye)}
+                    </td>
+                    <td className="p-4 text-center">
+                      <button
+                        onClick={(e) => handleSendReminder(e, customer)}
+                        disabled={sendingId === customer.id}
+                        title="SMS Hatırlatıcı Gönder"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-container text-on-primary-container text-xs font-semibold hover:opacity-80 disabled:opacity-40 transition-all"
+                      >
+                        <Bell size={13} />
+                        {sendingId === customer.id ? "..." : "Hatırlat"}
+                      </button>
                     </td>
                   </tr>
                 ))}

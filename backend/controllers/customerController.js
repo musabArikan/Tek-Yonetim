@@ -9,6 +9,7 @@ const {
   withTenant,
   activeCustomers,
 } = require("../utils/tenantScope");
+const { logAction } = require("../utils/auditLogger");
 
 const createDocument = async (Model, payload, session) => {
   if (!session) {
@@ -54,16 +55,11 @@ const createCustomer = async (req, res) => {
         }
       }
 
-      const counter = await Counter.findOneAndUpdate(
-        { id: `customerId:${getTenantId(req)}` },
-        { $inc: { seq: 1 } },
-        {
-          new: true,
-          upsert: true,
-          setDefaultsOnInsert: true,
-          session,
-        },
-      );
+      const lastCustomer = await Customer.findOne({ tenantId: getTenantId(req) })
+        .sort({ musteriNo: -1 })
+        .session(session);
+
+      const nextMusteriNo = lastCustomer && lastCustomer.musteriNo ? lastCustomer.musteriNo + 1 : 1;
 
       const customer = await createDocument(
         Customer,
@@ -74,7 +70,7 @@ const createCustomer = async (req, res) => {
           soyad: normalizedSoyad,
           tcKimlik: normalizedTcKimlik,
           telefon: normalizedTelefon,
-          musteriNo: counter.seq,
+          musteriNo: nextMusteriNo,
           adres: normalizedAdres,
           toplamKalanBakiye: toplamKalanBakiye || 0,
         },
@@ -95,6 +91,15 @@ const createCustomer = async (req, res) => {
       responsePayload = hasSalePayload ? { customer, transaction } : customer;
     });
 
+    // Audit log
+    const customerData = responsePayload?.customer || responsePayload;
+    logAction(req, "MUSTERI_EKLE", "Customer", customerData?._id, {
+      ad: normalizedAd,
+      soyad: normalizedSoyad,
+      userId: req.user?._id || req.user?.userId,
+      tenantId: req.user?.tenantId
+    });
+    
     return res.status(201).json(responsePayload);
   } catch (error) {
     if (error.statusCode) {
@@ -109,10 +114,7 @@ const createCustomer = async (req, res) => {
       });
     }
 
-    res.status(500).json({
-      message: "Server error while creating customer",
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message || "Bilinmeyen bir sunucu hatası oluştu" });
   } finally {
     await session.endSession();
   }
@@ -171,6 +173,12 @@ const deleteCustomer = async (req, res) => {
     customer.isDeleted = true;
     customer.deletedBy = deletedBy;
     await customer.save();
+
+    // Audit log
+    logAction(req, "MUSTERI_SIL", "Customer", customer._id, {
+      ad: customer.ad,
+      soyad: customer.soyad,
+    });
 
     res.status(200).json({ message: "Customer and related records deleted" });
   } catch (error) {

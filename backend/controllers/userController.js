@@ -7,6 +7,8 @@ const permissionKeys = [
   "satisYapabilir",
   "stokDuzenleyebilir",
   "envanterDuzenleyebilir",
+  "zRaporuAlabilir",
+  "excelExportEdebilir",
 ];
 
 const pageLockKeys = [

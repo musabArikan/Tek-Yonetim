@@ -50,6 +50,14 @@ const loginUser = async (req, res) => {
 
     const token = generateToken(user);
 
+    const hasPagePasswords = {
+      finans: !!user.pagePasswords?.finans,
+      stok: !!user.pagePasswords?.stok,
+      raporlar: !!user.pagePasswords?.raporlar,
+      envanter: !!user.pagePasswords?.envanter,
+      transferler: !!user.pagePasswords?.transferler,
+    };
+
     res.status(200).json({
       token,
       userId: user._id,
@@ -60,6 +68,7 @@ const loginUser = async (req, res) => {
       role: user.role,
       permissions: user.permissions,
       pageLocks: user.pageLocks,
+      hasPagePasswords,
     });
   } catch (error) {
     res.status(500).json({

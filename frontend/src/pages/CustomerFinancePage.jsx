@@ -252,7 +252,7 @@ function CollectionModal({ customerId, installment, onClose, onSuccess, isSubmit
 
 // ─── Ana Sayfa Bileşeni ───────────────────────────────────────────────────────
 
-export default function CustomerFinancePage() {
+export default function CustomerFinancePage({ initialCustomerId }) {
   const [customers, setCustomers] = useState([]);
   const [overdueInstallments, setOverdueInstallments] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -282,9 +282,7 @@ export default function CustomerFinancePage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+
 
   const loadCustomerDetail = useCallback(async (customer) => {
     setIsDetailLoading(true);
@@ -299,6 +297,22 @@ export default function CustomerFinancePage() {
       setIsDetailLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    loadInitialData().then(() => {
+      if (initialCustomerId) {
+        getCustomers().then((res) => {
+          const c = (res || []).find(
+            (cust) =>
+              String(cust._id || cust.id) === String(initialCustomerId)
+          );
+          if (c) {
+            loadCustomerDetail(c);
+          }
+        });
+      }
+    });
+  }, [loadInitialData, initialCustomerId, loadCustomerDetail]);
 
   const handleCreateInstallment = async (formData) => {
     setIsSubmitting(true);
@@ -376,39 +390,6 @@ export default function CustomerFinancePage() {
             <AlertTriangle size={16} />
             Vadesi Geçenler {overdueInstallments.length > 0 && `(${overdueInstallments.length})`}
           </button>
-        </div>
-      </div>
-
-      {/* Özet Kartlar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <div className="flex items-center gap-2 text-gray-500 text-xs font-medium mb-2">
-            <Users size={14} /> Toplam Müşteri
-          </div>
-          <div className="text-2xl font-bold text-gray-900">{customers.length}</div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <div className="flex items-center gap-2 text-red-500 text-xs font-medium mb-2">
-            <AlertTriangle size={14} /> Vadesi Geçmiş
-          </div>
-          <div className="text-2xl font-bold text-red-600">{overdueInstallments.length}</div>
-          <div className="text-xs text-gray-400 mt-1">{overdueCustomerCount} farklı müşteri</div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <div className="flex items-center gap-2 text-orange-500 text-xs font-medium mb-2">
-            <TrendingUp size={14} /> Toplam Gecikmiş
-          </div>
-          <div className="text-xl font-bold text-orange-600">
-            {formatCurrency(overdueInstallments.reduce((s, i) => s + i.amount, 0))}
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <div className="flex items-center gap-2 text-purple-500 text-xs font-medium mb-2">
-            <CreditCard size={14} /> Toplam Alacak
-          </div>
-          <div className="text-xl font-bold text-purple-600">
-            {formatCurrency(customers.reduce((s, c) => s + (c.toplamKalanBakiye || 0), 0))}
-          </div>
         </div>
       </div>
 
