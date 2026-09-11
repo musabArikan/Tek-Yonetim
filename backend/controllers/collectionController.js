@@ -54,15 +54,22 @@ const createCollection = async (req, res) => {
       );
       collection = collection[0];
 
-      // Eğer belirli bir taksit için tahsilat yapıldıysa, taksiti ödendi işaretle
       if (installmentId) {
         const installment = await Installment.findOne(
           withTenant(req, { _id: installmentId, isDeleted: false }),
         ).session(session);
 
         if (installment && !installment.isPaid) {
-          installment.isPaid = true;
-          installment.paidDate = collection.collectionDate;
+          installment.paidAmount = (installment.paidAmount || 0) + amount;
+          
+          if (installment.paidAmount >= installment.amount) {
+            installment.isPaid = true;
+            installment.status = "Ödendi";
+            installment.paidDate = collection.collectionDate;
+            installment.paidAmount = installment.amount; // Cap it
+          } else {
+            installment.status = "Kısmi Ödendi";
+          }
           await installment.save({ session });
         }
       }
@@ -170,11 +177,21 @@ const deleteCollection = async (req, res) => {
 
       // Eğer taksit işaretlendiyse geri al
       if (collection.installmentId) {
-        await Installment.findByIdAndUpdate(
-          collection.installmentId,
-          { isPaid: false, paidDate: null },
-          { session },
-        );
+        const installment = await Installment.findById(collection.installmentId).session(session);
+        if (installment) {
+          installment.paidAmount = Math.max(0, (installment.paidAmount || 0) - collection.amount);
+          
+          if (installment.paidAmount === 0) {
+            installment.status = "Bekliyor";
+            installment.isPaid = false;
+            installment.paidDate = null;
+          } else {
+            installment.status = "Kısmi Ödendi";
+            installment.isPaid = false;
+            installment.paidDate = null;
+          }
+          await installment.save({ session });
+        }
       }
 
       // Müşteri bakiyesini geri yükle

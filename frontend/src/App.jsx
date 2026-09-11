@@ -7,7 +7,6 @@ import SummaryCards from "./components/dashboard/SummaryCards";
 import StockPage from "./pages/StockPage";
 import StockManagementPage from "./pages/StockManagementPage";
 import InventoryPage from "./pages/InventoryPage";
-import DebtorsPage from "./pages/DebtorsPage";
 import UserManagementPage from "./pages/UserManagementPage";
 import TransferShipmentPage from "./pages/TransferShipmentPage";
 import CustomerFinancePage from "./pages/CustomerFinancePage";
@@ -66,7 +65,6 @@ const defaultDefterSuggestions = [
 const getPageFromPath = (pathname) => {
   if (pathname === "/stok") return "stok";
   if (pathname === "/envanter") return "envanter";
-  if (pathname === "/borclular") return "borclular";
   if (pathname === "/personeller") return "personeller";
   if (pathname === "/urun-stok") return "urun-stok";
   if (pathname === "/transferler") return "transferler";
@@ -152,6 +150,7 @@ function App() {
   const [transactions, setTransactions] = useState([]);
   const [stock, setStock] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
+  const [financeTargetId, setFinanceTargetId] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return Boolean(getAuthToken() && getAuthSession());
@@ -188,7 +187,7 @@ function App() {
   );
   const availablePages = useMemo(
     () =>
-      ["dashboard", "musteriler", "stok", "envanter", "borclular", "personeller", "urun-stok", "transferler", "musteri-finans", "raporlar"].filter(
+      ["dashboard", "musteriler", "stok", "envanter", "personeller", "urun-stok", "transferler", "musteri-finans", "raporlar"].filter(
         (pageId) =>
           pageId === "musteriler" ||
           (pageId === "dashboard" && isAdmin) ||
@@ -442,15 +441,6 @@ function App() {
       return;
     }
 
-    if (location.pathname === "/borclular") {
-      if (isPageLocked(pageLocks, "borclular")) {
-        redirectUnauthorizedPage("borclular");
-        return;
-      }
-      setActivePage("borclular");
-      return;
-    }
-
     if (location.pathname === "/personeller") {
       if (!isAdmin) {
         redirectUnauthorizedPage("personeller");
@@ -540,10 +530,14 @@ function App() {
   }, []);
 
   const handlePageChange = useCallback(
-    (pageId) => {
+    (pageId, isFromNav = true) => {
       if (pageId !== "home" && isPageLocked(pageLocks, pageId)) {
         redirectUnauthorizedPage(pageId);
         return;
+      }
+
+      if (isFromNav && pageId === "musteri-finans") {
+        setFinanceTargetId(null);
       }
 
       // Check if the page is password-protected for this user
@@ -559,7 +553,6 @@ function App() {
         musteriler: "/musteriler",
         stok: "/stok",
         envanter: "/envanter",
-        borclular: "/borclular",
         personeller: "/personeller",
         "urun-stok": "/urun-stok",
         transferler: "/transferler",
@@ -582,7 +575,6 @@ function App() {
           musteriler: "/musteriler",
           stok: "/stok",
           envanter: "/envanter",
-          borclular: "/borclular",
           personeller: "/personeller",
           "urun-stok": "/urun-stok",
           transferler: "/transferler",
@@ -635,7 +627,11 @@ function App() {
         return;
       }
 
-      handlePageChange(nextPage);
+      if (nextPage === "musteri-finans") {
+        setFinanceTargetId(customerId);
+      }
+
+      handlePageChange(nextPage, false);
     },
     [handlePageChange, syncRoute],
   );
@@ -884,13 +880,6 @@ function App() {
             <InventoryPage canManageInventory={canManageInventory} />
           ) : activePage === "urun-stok" ? (
             <StockManagementPage canManageStock={canManageStock} />
-          ) : activePage === "borclular" ? (
-            <DebtorsPage
-              customers={customers}
-              onSelectCustomer={(customerId) =>
-                handleSelectCustomer(customerId, "home")
-              }
-            />
           ) : activePage === "personeller" ? (
             <UserManagementPage
               currentUserId={currentUserId}
@@ -899,7 +888,7 @@ function App() {
           ) : activePage === "transferler" ? (
             <TransferShipmentPage />
           ) : activePage === "musteri-finans" ? (
-            <CustomerFinancePage initialCustomerId={selectedCustomerId} />
+            <CustomerFinancePage initialCustomerId={financeTargetId} />
           ) : activePage === "raporlar" ? (
             <ZRaporuPage />
           ) : null}

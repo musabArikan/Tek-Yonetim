@@ -42,9 +42,23 @@ const installmentSchema = new mongoose.Schema(
       required: [true, "Taksit tutarı zorunludur"],
       min: [0, "Tutar negatif olamaz"],
     },
+    paidAmount: {
+      type: Number,
+      default: 0,
+      min: [0, "Ödenen tutar negatif olamaz"],
+    },
     isPaid: {
       type: Boolean,
       default: false,
+    },
+    status: {
+      type: String,
+      enum: ["Bekliyor", "Kısmi Ödendi", "Ödendi", "Gecikmiş"],
+      default: "Bekliyor",
+    },
+    productNames: {
+      type: [String],
+      default: [],
     },
     paidDate: {
       type: Date,

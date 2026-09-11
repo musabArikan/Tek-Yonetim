@@ -91,7 +91,7 @@ export default function CustomersPage({
                           onSelectCustomer(customer.id);
                         }}
                       >
-                        Finans Detayı
+                        Müşteri Detayı
                         <ArrowRight size={16} />
                       </button>
                     </td>

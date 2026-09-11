@@ -18,3 +18,13 @@ export const createTransaction = async (transactionData) => {
     handleApiError(error);
   }
 };
+
+export const getCustomerTransactions = async (customerId) => {
+  try {
+    const response = await api.get(`/transactions/customer/${customerId}`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error);
+  }
+};
+

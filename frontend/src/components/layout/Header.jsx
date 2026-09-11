@@ -7,7 +7,6 @@ const navItems = [
   { id: "stok", label: "Stok" },
   { id: "urun-stok", label: "Ürün & Stok" },
   { id: "envanter", label: "Emanetler" },
-  { id: "borclular", label: "Borçlular" },
   { id: "transferler", label: "Transferler" },
   { id: "musteri-finans", label: "Finans & Senetler" },
   { id: "raporlar", label: "Raporlar" },

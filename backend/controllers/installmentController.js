@@ -14,6 +14,7 @@ const createInstallment = async (req, res) => {
       installmentCount,
       startDate,
       notes,
+      productNames,
     } = req.body;
 
     if (!customerId || !totalAmount || !installmentCount || !startDate) {
@@ -57,8 +58,11 @@ const createInstallment = async (req, res) => {
           dueDate,
           amount: perInstallmentAmount,
           isPaid: false,
+          status: "Bekliyor",
+          paidAmount: 0,
           createdBy,
           notes: notes?.trim(),
+          productNames: Array.isArray(productNames) ? productNames : [],
         });
       }
 
@@ -174,6 +178,8 @@ const markInstallmentPaid = async (req, res) => {
       }
 
       installment.isPaid = true;
+      installment.status = "Ödendi";
+      installment.paidAmount = installment.amount;
       installment.paidDate = paidDate ? new Date(paidDate) : new Date();
       await installment.save({ session });
 
