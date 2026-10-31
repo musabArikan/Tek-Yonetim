@@ -1,49 +1,14 @@
-import api from "../utils/api";
-import { handleApiError } from "../utils/apiError";
+import { localDb } from "../utils/localDb.js";
+import { call } from "./serviceUtils.js";
 
-export const getUsers = async () => {
-  try {
-    const response = await api.get("/users");
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const getUsers = () => call(() => localDb.users.list());
 
-export const createUser = async (payload) => {
-  try {
-    const response = await api.post("/users", payload);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const createUser = (payload) => call(() => localDb.users.create(payload));
 
-export const updateUser = async (userId, payload) => {
-  try {
-    const response = await api.put(`/users/${userId}`, payload);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const updateUser = (userId, payload) =>
+  call(() => localDb.users.update(userId, payload));
 
-export const deleteUser = async (userId) => {
-  try {
-    const response = await api.delete(`/users/${userId}`);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const deleteUser = (userId) => call(() => localDb.users.remove(userId));
 
-export const changePassword = async (userId, newPassword) => {
-  try {
-    const response = await api.patch(`/users/${userId}/password`, {
-      newPassword,
-    });
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const changePassword = (userId, newPassword) =>
+  call(() => localDb.users.changePassword(userId, newPassword));

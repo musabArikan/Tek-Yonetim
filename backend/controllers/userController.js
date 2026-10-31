@@ -1,5 +1,6 @@
 const User = require("../models/User");
 const { getTenantId, getUserId, withTenant } = require("../utils/tenantScope");
+const { generateEmailSuggestions } = require("./authController");
 
 const permissionKeys = [
   "musteriSilebilir",
@@ -117,13 +118,16 @@ const createUser = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne(
-      withTenant(req, { email: normalizedEmail, isDeleted: false }),
-    );
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+      isDeleted: false,
+    });
 
     if (existingUser) {
-      return res.status(400).json({
-        message: "Bu e-posta ile kayıtlı bir personel zaten var",
+      const suggestions = await generateEmailSuggestions(normalizedEmail, normalizedSoyad);
+      return res.status(409).json({
+        message: "Bu e-posta adresi başka bir mağaza/kullanıcı tarafından kullanılmaktadır.",
+        suggestions,
       });
     }
 
@@ -186,17 +190,17 @@ const updateUser = async (req, res) => {
       });
     }
 
-    const emailOwner = await User.findOne(
-      withTenant(req, {
-        email: normalizedEmail,
-        isDeleted: false,
-        _id: { $ne: user._id },
-      }),
-    );
+    const emailOwner = await User.findOne({
+      email: normalizedEmail,
+      isDeleted: false,
+      _id: { $ne: user._id },
+    });
 
     if (emailOwner) {
-      return res.status(400).json({
-        message: "Bu e-posta başka bir personel tarafından kullanılıyor",
+      const suggestions = await generateEmailSuggestions(normalizedEmail, normalizedSoyad);
+      return res.status(409).json({
+        message: "Bu e-posta adresi başka bir mağaza/kullanıcı tarafından kullanılmaktadır.",
+        suggestions,
       });
     }
 

@@ -1,29 +1,10 @@
-import api from "../utils/api";
-import { handleApiError } from "../utils/apiError";
+import { localDb } from "../utils/localDb.js";
+import { call } from "./serviceUtils.js";
 
-export const getStocks = async () => {
-  try {
-    const response = await api.get("/stocks");
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const getStocks = () => call(() => localDb.stocks.list());
 
-export const addOrUpdateStock = async (stockData) => {
-  try {
-    const response = await api.post("/stocks", stockData);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const addOrUpdateStock = (stockData) =>
+  call(() => localDb.stocks.addOrUpdate(stockData));
 
-export const updateStockQuantity = async (stockId, payload) => {
-  try {
-    const response = await api.put(`/stocks/${stockId}`, payload);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const updateStockQuantity = (stockId, payload) =>
+  call(() => localDb.stocks.updateQuantity(stockId, payload));

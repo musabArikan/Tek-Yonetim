@@ -1,47 +1,17 @@
-import api from "../utils/api";
-import { handleApiError } from "../utils/apiError";
+import { localDb } from "../utils/localDb.js";
+import { call } from "./serviceUtils.js";
 
-export const getTransfers = async (params = {}) => {
-  try {
-    const response = await api.get("/transfers", { params });
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const getTransfers = (params = {}) =>
+  call(() => localDb.transfers.list(params));
 
-export const getTransferById = async (transferId) => {
-  try {
-    const response = await api.get(`/transfers/${transferId}`);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const getTransferById = (transferId) =>
+  call(() => localDb.transfers.getById(transferId));
 
-export const createTransfer = async (transferData) => {
-  try {
-    const response = await api.post("/transfers", transferData);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const createTransfer = (transferData) =>
+  call(() => localDb.transfers.create(transferData));
 
-export const updateTransferStatus = async (transferId, status, notes) => {
-  try {
-    const response = await api.patch(`/transfers/${transferId}/status`, { status, notes });
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const updateTransferStatus = (transferId, status, notes) =>
+  call(() => localDb.transfers.updateStatus(transferId, status, notes));
 
-export const deleteTransfer = async (transferId) => {
-  try {
-    const response = await api.delete(`/transfers/${transferId}`);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const deleteTransfer = (transferId) =>
+  call(() => localDb.transfers.remove(transferId));

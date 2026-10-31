@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { KeyRound, Pencil, PlusCircle, Trash2, Users, Lock } from "lucide-react";
+import {
+  KeyRound,
+  Pencil,
+  PlusCircle,
+  Trash2,
+  Users,
+  Lock,
+  AtSign,
+  Sparkles,
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react";
 import { toast } from "react-toastify";
 import Modal from "../components/modals/Modal";
 import { FormField, TextInput, SelectInput } from "../components/ui/FormField";
@@ -10,7 +21,9 @@ import {
   updateUser,
   changePassword,
 } from "../services/userService";
+import { checkEmailAvailability } from "../services/authService";
 import { setUserPagePassword } from "../services/reAuthService";
+import { getAuthSession } from "../utils/authStorage";
 
 const roleOptions = [
   { value: "admin", label: "Admin" },
@@ -51,6 +64,24 @@ const emptyForm = {
   pageLocks: emptyFlags(pageLockOptions),
 };
 
+const extractDomainFromEmail = (emailStr = "") => {
+  const clean = String(emailStr || "").trim().toLowerCase();
+  const parts = clean.split("@");
+  return parts.length > 1 && parts[1] ? parts[1] : "tekyonetim.com";
+};
+
+const slugifyTr = (value = "") =>
+  String(value || "")
+    .toLocaleLowerCase("tr-TR")
+    .replaceAll("ğ", "g")
+    .replaceAll("ü", "u")
+    .replaceAll("ş", "s")
+    .replaceAll("ı", "i")
+    .replaceAll("ö", "o")
+    .replaceAll("ç", "c")
+    .replace(/[^a-z0-9._-]/g, "")
+    .trim();
+
 const normalizeUser = (user) => ({
   id: user._id || user.id,
   ad: user.ad || "",
@@ -72,7 +103,11 @@ const SectionTitle = ({ title, description }) => (
   </div>
 );
 
-export default function UserManagementPage({ currentUserId, onSessionRefresh }) {
+export default function UserManagementPage({
+  currentUserId,
+  currentUserEmail,
+  onSessionRefresh,
+}) {
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -82,6 +117,18 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
   const [formError, setFormError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState("");
+
+  // Akıllı e-posta uzantısı (@domain.com) state'leri
+  const activeDomain = useMemo(() => {
+    const sessionEmail = currentUserEmail || getAuthSession()?.email || "";
+    return extractDomainFromEmail(sessionEmail);
+  }, [currentUserEmail]);
+
+  const [emailUsername, setEmailUsername] = useState("");
+  const [emailDomain, setEmailDomain] = useState(activeDomain);
+  const [isEditingDomain, setIsEditingDomain] = useState(false);
+  const [emailSuggestions, setEmailSuggestions] = useState([]);
+  const [emailAvailableConfirmed, setEmailAvailableConfirmed] = useState(false);
 
   // Şifre değiştirme modal state'leri
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -94,7 +141,11 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
   const [isPagePasswordModalOpen, setIsPagePasswordModalOpen] = useState(false);
   const [pagePasswordTargetUser, setPagePasswordTargetUser] = useState(null);
   const [pagePasswordInputs, setPagePasswordInputs] = useState({
-    finans: "", stok: "", raporlar: "", envanter: "", transferler: ""
+    finans: "",
+    stok: "",
+    raporlar: "",
+    envanter: "",
+    transferler: "",
   });
   const [isSavingPagePassword, setIsSavingPagePassword] = useState({});
 
@@ -103,7 +154,7 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
     stok: "Stok",
     raporlar: "Raporlar",
     envanter: "Envanter",
-    transferler: "Transferler"
+    transferler: "Transferler",
   };
 
   const modalTitle = editingUser ? "Personel Düzenle" : "Yeni Personel Ekle";
@@ -138,15 +189,38 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
     [users],
   );
 
+  // Kullanıcı adı ve domain birleşiminden tam e-posta adresini senkron tut
+  const combinedEmail = useMemo(() => {
+    const cleanUser = emailUsername.trim().toLowerCase();
+    const cleanDomain = emailDomain.trim().replace(/^@+/, "").toLowerCase();
+    if (!cleanUser) return "";
+    return `${cleanUser}@${cleanDomain || activeDomain}`;
+  }, [emailUsername, emailDomain, activeDomain]);
+
+  useEffect(() => {
+    setForm((prev) => ({ ...prev, email: combinedEmail }));
+  }, [combinedEmail]);
+
   const openCreateModal = () => {
     setEditingUser(null);
     setForm(emptyForm);
+    setEmailUsername("");
+    setEmailDomain(activeDomain);
+    setIsEditingDomain(false);
+    setEmailSuggestions([]);
+    setEmailAvailableConfirmed(false);
     setFormError("");
     setIsModalOpen(true);
   };
 
   const openEditModal = (user) => {
     setEditingUser(user);
+    const [localPart = "", domainPart = activeDomain] = String(user.email || "").split("@");
+    setEmailUsername(localPart);
+    setEmailDomain(domainPart || activeDomain);
+    setIsEditingDomain(false);
+    setEmailSuggestions([]);
+    setEmailAvailableConfirmed(false);
     setForm({
       ad: user.ad,
       soyad: user.soyad,
@@ -164,6 +238,11 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
     setIsModalOpen(false);
     setEditingUser(null);
     setForm(emptyForm);
+    setEmailUsername("");
+    setEmailDomain(activeDomain);
+    setIsEditingDomain(false);
+    setEmailSuggestions([]);
+    setEmailAvailableConfirmed(false);
     setFormError("");
   };
 
@@ -185,7 +264,13 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
   // Sayfa şifresi modal yardımcıları
   const openPagePasswordModal = (user) => {
     setPagePasswordTargetUser(user);
-    setPagePasswordInputs({ finans: "", stok: "", raporlar: "", envanter: "", transferler: "" });
+    setPagePasswordInputs({
+      finans: "",
+      stok: "",
+      raporlar: "",
+      envanter: "",
+      transferler: "",
+    });
     setIsPagePasswordModalOpen(true);
   };
 
@@ -200,9 +285,9 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
     try {
       await setUserPagePassword(pagePasswordTargetUser.id, page, pwd);
       toast.success(
-        pwd 
-          ? `${PAGE_LABELS[page]} sayfası şifresi güncellendi` 
-          : `${PAGE_LABELS[page]} sayfası şifresi kaldırıldı`
+        pwd
+          ? `${PAGE_LABELS[page]} sayfası şifresi güncellendi`
+          : `${PAGE_LABELS[page]} sayfası şifresi kaldırıldı`,
       );
       setPagePasswordInputs((prev) => ({ ...prev, [page]: "" }));
     } catch (err) {
@@ -213,8 +298,67 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
   };
 
   const handleFieldChange = (field) => (event) => {
-    setForm((prev) => ({ ...prev, [field]: event.target.value }));
+    const value = event.target.value;
+    setForm((prev) => ({ ...prev, [field]: value }));
     setFormError("");
+  };
+
+  const handleEmailUsernameChange = (event) => {
+    const rawValue = event.target.value;
+    setFormError("");
+    setEmailSuggestions([]);
+    setEmailAvailableConfirmed(false);
+
+    // Kullanıcı tam e-posta yapıştırırsa (@ içeriyorsa) otomatik olarak kullanıcı adı ve domain'e ayır
+    if (rawValue.includes("@")) {
+      const [localPart, ...domainParts] = rawValue.split("@");
+      const nextDomain = domainParts.join("").trim();
+      setEmailUsername(slugifyTr(localPart));
+      if (nextDomain) {
+        setEmailDomain(nextDomain.toLowerCase());
+      }
+      return;
+    }
+
+    setEmailUsername(slugifyTr(rawValue));
+  };
+
+  const handleEmailDomainChange = (event) => {
+    const rawDomain = event.target.value.replace(/^@+/, "").trim().toLowerCase();
+    setEmailDomain(rawDomain);
+    setFormError("");
+    setEmailSuggestions([]);
+    setEmailAvailableConfirmed(false);
+  };
+
+  const handleCheckStaffEmail = async () => {
+    if (!combinedEmail || !combinedEmail.includes("@")) return;
+    try {
+      const result = await checkEmailAvailability(
+        combinedEmail,
+        form.soyad,
+        editingUser?.id || null,
+      );
+      if (!result.available) {
+        setFormError(
+          result.message ||
+            "Bu e-posta adresi başka bir mağaza/kullanıcı tarafından kullanılmaktadır.",
+        );
+        setEmailSuggestions(result.suggestions || []);
+        setEmailAvailableConfirmed(false);
+      }
+    } catch {
+      // sessiz geç
+    }
+  };
+
+  const handleSelectEmailSuggestion = (suggestedEmail) => {
+    const [localPart = "", domainPart = activeDomain] = String(suggestedEmail).split("@");
+    setEmailUsername(localPart);
+    setEmailDomain(domainPart || activeDomain);
+    setFormError("");
+    setEmailSuggestions([]);
+    setEmailAvailableConfirmed(true);
   };
 
   const handleFlagChange = (section, key) => (event) => {
@@ -230,7 +374,7 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
   const buildPayload = () => ({
     ad: form.ad.trim(),
     soyad: form.soyad.trim(),
-    email: form.email.trim(),
+    email: combinedEmail.trim(),
     ...(editingUser ? {} : { password: form.password }),
     role: form.role,
     permissions: form.permissions,
@@ -240,9 +384,16 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setFormError("");
+    setEmailSuggestions([]);
 
-    if (!form.ad.trim() || !form.soyad.trim() || !form.email.trim()) {
-      setFormError("Ad, soyad ve e-posta alanları zorunludur.");
+    if (!form.ad.trim() || !form.soyad.trim() || !emailUsername.trim()) {
+      setFormError("Ad, soyad ve e-posta kullanıcı adı alanları zorunludur.");
+      return;
+    }
+
+    const cleanDomain = emailDomain.trim().replace(/^@+/, "");
+    if (!cleanDomain || !cleanDomain.includes(".")) {
+      setFormError("Lütfen geçerli bir e-posta uzantısı giriniz (örn: gunesmagaza.com).");
       return;
     }
 
@@ -259,6 +410,23 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
     setIsSaving(true);
 
     try {
+      // Kayıt öncesi e-posta tekillik kontrolü
+      const availability = await checkEmailAvailability(
+        combinedEmail,
+        form.soyad,
+        editingUser?.id || null,
+      );
+      if (!availability.available) {
+        setFormError(
+          availability.message ||
+            "Bu e-posta adresi başka bir mağaza/kullanıcı tarafından kullanılmaktadır.",
+        );
+        setEmailSuggestions(availability.suggestions || []);
+        setEmailAvailableConfirmed(false);
+        setIsSaving(false);
+        return;
+      }
+
       const payload = buildPayload();
       const response = editingUser
         ? await updateUser(editingUser.id, payload)
@@ -267,7 +435,7 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
       toast.success(
         editingUser
           ? "Personel bilgileri güncellendi."
-          : "Yeni personel oluşturuldu.",
+          : `Yeni personel (${combinedEmail}) oluşturuldu.`,
       );
 
       closeModal();
@@ -281,6 +449,7 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
       setFormError(
         error?.response?.data?.message || "Personel kaydı tamamlanamadı.",
       );
+      setEmailSuggestions(error?.response?.data?.suggestions || []);
     } finally {
       setIsSaving(false);
     }
@@ -350,7 +519,8 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
             Personeller
           </h2>
           <p className="text-sm text-on-surface-variant mt-1">
-            İşletmenize bağlı kullanıcıları yönetin.
+            İşletmenize bağlı kullanıcıları yönetin. Varsayılan mağaza e-posta uzantınız:{" "}
+            <span className="font-semibold text-primary-container">@{activeDomain}</span>
           </p>
         </div>
         <button
@@ -423,12 +593,12 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
                               {user.ad} {user.soyad}
                             </p>
                             <p className="text-xs text-on-surface-variant">
-                              {isSelf ? "Aktif oturum" : "Personel hesabı"}
+                              {isSelf ? "Aktif oturum (Mağaza Yetkilisi)" : "Personel hesabı"}
                             </p>
                           </div>
                         </div>
                       </td>
-                      <td className="p-4 text-sm text-on-surface">{user.email}</td>
+                      <td className="p-4 text-sm text-on-surface font-medium">{user.email}</td>
                       <td className="p-4 text-sm text-on-surface">
                         {roleLabelMap[user.role] || user.role}
                       </td>
@@ -452,7 +622,6 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
                       </td>
                       <td className="p-4">
                         <div className="flex items-center justify-end gap-2">
-                          {/* Sayfa Kilidi butonu — kendi hesabı hariç */}
                           {!isSelf && (
                             <button
                               type="button"
@@ -464,7 +633,6 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
                               Sayfa Kilidi
                             </button>
                           )}
-                          {/* Şifre değiştir butonu — kendi hesabı hariç */}
                           {!isSelf && (
                             <button
                               type="button"
@@ -476,7 +644,6 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
                               Şifre
                             </button>
                           )}
-                          {/* Düzenle butonu — kendi hesabı hariç */}
                           <button
                             type="button"
                             onClick={() => openEditModal(user)}
@@ -487,7 +654,6 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
                             <Pencil size={14} />
                             Düzenle
                           </button>
-                          {/* Sil butonu — kendi hesabı hariç */}
                           <button
                             type="button"
                             onClick={() => handleDelete(user)}
@@ -517,7 +683,7 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
               <TextInput
                 value={form.ad}
                 onChange={handleFieldChange("ad")}
-                placeholder="Örn: Ayşe"
+                placeholder="Örn: Mehmet"
               />
             </FormField>
             <FormField label="Soyad" required>
@@ -527,14 +693,92 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
                 placeholder="Örn: Kaya"
               />
             </FormField>
-            <FormField label="E-posta" required>
-              <TextInput
-                type="email"
-                value={form.email}
-                onChange={handleFieldChange("email")}
-                placeholder="personel@isletme.com"
-              />
-            </FormField>
+
+            {/* Akıllı E-posta Alanı: Sağ tarafta otomatik @domain.com uzantısı */}
+            <div className="md:col-span-2">
+              <FormField label="E-posta (Otomatik Mağaza Uzantılı)" required>
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-stretch rounded-lg border border-outline-variant bg-surface-container-lowest overflow-hidden focus-within:border-primary focus-within:ring-1 focus-within:ring-primary">
+                    <input
+                      type="text"
+                      value={emailUsername}
+                      onChange={handleEmailUsernameChange}
+                      onBlur={handleCheckStaffEmail}
+                      placeholder={
+                        form.ad
+                          ? `örn: ${slugifyTr(form.ad)}`
+                          : "örn: mehmet"
+                      }
+                      className="flex-1 min-w-0 border-0 bg-transparent px-3.5 py-2.5 text-sm text-on-surface outline-none placeholder:text-on-surface-variant/60"
+                    />
+                    <div className="flex items-center border-l border-outline-variant bg-surface-variant/60 px-3 py-1.5 gap-1">
+                      <AtSign size={14} className="text-primary-container shrink-0" />
+                      {isEditingDomain ? (
+                        <input
+                          type="text"
+                          value={emailDomain}
+                          onChange={handleEmailDomainChange}
+                          onBlur={() => {
+                            if (!emailDomain.trim()) setEmailDomain(activeDomain);
+                            setIsEditingDomain(false);
+                            handleCheckStaffEmail();
+                          }}
+                          autoFocus
+                          placeholder={activeDomain}
+                          className="w-36 rounded border border-primary/40 bg-white px-2 py-1 text-xs font-semibold text-on-surface outline-none"
+                        />
+                      ) : (
+                        <span className="text-xs sm:text-sm font-semibold text-primary-container select-none">
+                          {emailDomain || activeDomain}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingDomain((prev) => !prev)}
+                        title="Domain uzantısını manuel değiştir"
+                        className="ml-1.5 rounded px-1.5 py-0.5 text-[11px] font-medium text-on-surface-variant hover:bg-surface hover:text-on-surface transition-colors cursor-pointer"
+                      >
+                        {isEditingDomain ? "Tamam" : "Değiştir"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Otomatik birleşen tam e-posta önizlemesi ve hızlı isim önerisi */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="text-on-surface-variant">
+                      Birleşen E-posta:{" "}
+                      <span className="font-semibold text-on-surface">
+                        {combinedEmail || `kullanici@${emailDomain || activeDomain}`}
+                      </span>
+                    </div>
+
+                    {form.ad.trim() && !emailUsername && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const suggestedLocal = form.soyad.trim()
+                            ? `${slugifyTr(form.ad)}.${slugifyTr(form.soyad)}`
+                            : slugifyTr(form.ad);
+                          setEmailUsername(suggestedLocal);
+                        }}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-primary-container hover:underline cursor-pointer"
+                      >
+                        <Sparkles size={12} />
+                        &ldquo;{slugifyTr(form.ad)}@{emailDomain || activeDomain}&rdquo; olarak doldur
+                      </button>
+                    )}
+                  </div>
+
+                  {emailAvailableConfirmed && !formError ? (
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                      <CheckCircle2 size={14} />
+                      Seçilen e-posta adresi kullanılabilir.
+                    </p>
+                  ) : null}
+                </div>
+              </FormField>
+            </div>
+
             <FormField label="Rol Seçimi" required>
               <SelectInput value={form.role} onChange={handleFieldChange("role")}>
                 {roleOptions.map((role) => (
@@ -544,18 +788,17 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
                 ))}
               </SelectInput>
             </FormField>
+
             {/* Şifre yalnızca yeni personel eklerken gösterilir */}
             {!editingUser ? (
-              <div className="md:col-span-2">
-                <FormField label="Şifre" required>
-                  <TextInput
-                    type="password"
-                    value={form.password}
-                    onChange={handleFieldChange("password")}
-                    placeholder="En az 5 karakter"
-                  />
-                </FormField>
-              </div>
+              <FormField label="Şifre" required>
+                <TextInput
+                  type="password"
+                  value={form.password}
+                  onChange={handleFieldChange("password")}
+                  placeholder="En az 5 karakter"
+                />
+              </FormField>
             ) : null}
           </div>
 
@@ -608,8 +851,32 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
           </div>
 
           {formError ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {formError}
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 space-y-2.5">
+              <div className="flex items-start gap-2">
+                <AlertCircle size={18} className="shrink-0 mt-0.5 text-red-600" />
+                <span className="font-medium">{formError}</span>
+              </div>
+
+              {emailSuggestions.length > 0 ? (
+                <div className="pt-1 border-t border-red-200/70">
+                  <p className="text-xs font-semibold text-slate-700 mb-2">
+                    Alternatif personel e-posta önerileri (seçmek için tıklayın):
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {emailSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => handleSelectEmailSuggestion(suggestion)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 shadow-xs transition hover:bg-blue-600 hover:text-white hover:border-blue-600 cursor-pointer"
+                      >
+                        <Sparkles size={13} />
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -695,11 +962,14 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
       >
         <div className="space-y-4">
           <p className="text-sm text-on-surface-variant">
-            Aşağıdaki sayfalar için erişim şifresi belirleyebilirsiniz. Şifre belirlediğiniz sayfalara girilirken personelden bu şifre istenecektir. Kaldırmak için alanı boş bırakıp "Kaldır" butonuna tıklayın.
+            Aşağıdaki sayfalar için erişim şifresi belirleyebilirsiniz. Şifre belirlediğiniz sayfalara girilirken personelden bu şifre istenecektir. Kaldırmak için alanı boş bırakıp &ldquo;Kaldır&rdquo; butonuna tıklayın.
           </p>
           <div className="flex flex-col gap-3">
             {Object.entries(PAGE_LABELS).map(([key, label]) => (
-              <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 rounded-xl border border-outline-variant bg-surface-container-lowest p-3">
+              <div
+                key={key}
+                className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 rounded-xl border border-outline-variant bg-surface-container-lowest p-3"
+              >
                 <div className="flex-1 text-sm font-medium text-on-surface">
                   {label}
                 </div>
@@ -709,7 +979,10 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
                     placeholder="Şifre"
                     value={pagePasswordInputs[key]}
                     onChange={(e) =>
-                      setPagePasswordInputs((prev) => ({ ...prev, [key]: e.target.value }))
+                      setPagePasswordInputs((prev) => ({
+                        ...prev,
+                        [key]: e.target.value,
+                      }))
                     }
                     className="w-24 rounded-lg border border-outline-variant bg-surface px-3 py-1.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                   />
@@ -719,7 +992,11 @@ export default function UserManagementPage({ currentUserId, onSessionRefresh }) 
                     disabled={isSavingPagePassword[key]}
                     className="rounded-lg bg-primary-container text-white px-3 py-1.5 text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer min-w-[70px]"
                   >
-                    {isSavingPagePassword[key] ? "..." : (pagePasswordInputs[key] ? "Güncelle" : "Kaldır")}
+                    {isSavingPagePassword[key]
+                      ? "..."
+                      : pagePasswordInputs[key]
+                        ? "Güncelle"
+                        : "Kaldır"}
                   </button>
                 </div>
               </div>

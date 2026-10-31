@@ -1,56 +1,20 @@
-import api from "../utils/api";
-import { handleApiError } from "../utils/apiError";
+import { localDb } from "../utils/localDb.js";
+import { call } from "./serviceUtils.js";
 
-export const getShipments = async (params = {}) => {
-  try {
-    const response = await api.get("/shipments", { params });
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const getShipments = (params = {}) =>
+  call(() => localDb.shipments.list(params));
 
-export const getShipmentsByDate = async (date) => {
-  try {
-    const response = await api.get("/shipments", { params: { date } });
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const getShipmentsByDate = (date) =>
+  call(() => localDb.shipments.list({ date }));
 
-export const getShipmentById = async (shipmentId) => {
-  try {
-    const response = await api.get(`/shipments/${shipmentId}`);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const getShipmentById = (shipmentId) =>
+  call(() => localDb.shipments.getById(shipmentId));
 
-export const createShipment = async (shipmentData) => {
-  try {
-    const response = await api.post("/shipments", shipmentData);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const createShipment = (shipmentData) =>
+  call(() => localDb.shipments.create(shipmentData));
 
-export const updateShipment = async (shipmentId, shipmentData) => {
-  try {
-    const response = await api.put(`/shipments/${shipmentId}`, shipmentData);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const updateShipment = (shipmentId, shipmentData) =>
+  call(() => localDb.shipments.update(shipmentId, shipmentData));
 
-export const deleteShipment = async (shipmentId) => {
-  try {
-    const response = await api.delete(`/shipments/${shipmentId}`);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const deleteShipment = (shipmentId) =>
+  call(() => localDb.shipments.remove(shipmentId));

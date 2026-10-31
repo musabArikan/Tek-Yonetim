@@ -1,20 +1,7 @@
-import api from "../utils/api";
-import { handleApiError } from "../utils/apiError";
+import { localDb } from "../utils/localDb.js";
+import { call } from "./serviceUtils.js";
 
-export const getPendingInventory = async () => {
-  try {
-    const response = await api.get("/inventory");
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const getPendingInventory = () => call(() => localDb.inventory.listPending());
 
-export const deliverInventoryItem = async (payload) => {
-  try {
-    const response = await api.put("/inventory/deliver", payload);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const deliverInventoryItem = (payload) =>
+  call(() => localDb.inventory.deliver(payload));

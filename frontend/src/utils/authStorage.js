@@ -1,5 +1,6 @@
 const AUTH_TOKEN_KEY = "auth_token";
 const AUTH_SESSION_KEY = "auth_session";
+const LOGGED_OUT_KEY = "tekyonetim_logged_out";
 
 const isBrowser = () => typeof window !== "undefined";
 
@@ -27,11 +28,32 @@ export const setAuthSession = (session) => {
 
   window.localStorage.setItem(AUTH_TOKEN_KEY, session.token);
   window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+  try {
+    window.sessionStorage?.removeItem(LOGGED_OUT_KEY);
+  } catch {
+    // sessionStorage erişilemezse yoksay
+  }
 };
 
-export const clearAuthSession = () => {
+export const clearAuthSession = ({ markLoggedOut = true } = {}) => {
   if (!isBrowser()) return;
 
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
   window.localStorage.removeItem(AUTH_SESSION_KEY);
+  if (markLoggedOut) {
+    try {
+      window.sessionStorage?.setItem(LOGGED_OUT_KEY, "1");
+    } catch {
+      // sessionStorage erişilemezse yoksay
+    }
+  }
+};
+
+export const isExplicitlyLoggedOut = () => {
+  if (!isBrowser()) return false;
+  try {
+    return window.sessionStorage?.getItem(LOGGED_OUT_KEY) === "1";
+  } catch {
+    return false;
+  }
 };

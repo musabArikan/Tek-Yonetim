@@ -9,7 +9,7 @@ import {
   Wallet,
   PrinterIcon,
 } from "lucide-react";
-import api from "../utils/api";
+import { exportData, getZRaporu } from "../services/reportService";
 
 const formatCurrency = (val) =>
   Number(val || 0).toLocaleString("tr-TR", { style: "currency", currency: "TRY" });
@@ -62,8 +62,8 @@ export default function ZRaporuPage() {
     setRapor(null);
 
     try {
-      const res = await api.get(`/reports/z-raporu?date=${date}`);
-      setRapor(res.data);
+      const data = await getZRaporu(date);
+      setRapor(data);
     } catch (err) {
       setError(err?.response?.data?.message || "Rapor alınamadı");
     } finally {
@@ -75,11 +75,11 @@ export default function ZRaporuPage() {
 
   const handleExport = async (type) => {
     try {
-      const res = await api.get(`/export/${type}`, { responseType: "blob" });
-      const url = URL.createObjectURL(res.data);
+      const { blob, fileName } = await exportData(type);
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${type}.xlsx`;
+      a.download = fileName || `${type}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {

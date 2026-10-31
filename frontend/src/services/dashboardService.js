@@ -1,6 +1,3 @@
-import api from "../utils/api";
+import { localDb } from "../utils/localDb.js";
 
-export const getDashboardSummary = async () => {
-  const response = await api.get("/dashboard/summary");
-  return response.data;
-};
+export const getDashboardSummary = () => localDb.dashboard.summary();

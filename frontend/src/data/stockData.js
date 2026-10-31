@@ -1,4 +1,4 @@
-export const markalar = ["Profilo", "Bosch", "Gipa"];
+export const markalar = ["Profilo", "Bosch", "Siemens", "Gipa"];
 
 export const initialStock = [
   { id: 1, urunKodu: "PRF-BUZ-450", marka: "Profilo", adet: 8 },

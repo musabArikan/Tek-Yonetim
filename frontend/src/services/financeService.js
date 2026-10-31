@@ -1,105 +1,36 @@
-import api from "../utils/api";
-import { handleApiError } from "../utils/apiError";
+import { localDb } from "../utils/localDb.js";
+import { call } from "./serviceUtils.js";
+
+// Tahsilat (kasa) fonksiyonları artık collectionService.js içinde; geriye dönük uyumluluk için
+// buradan da dışa aktarılır (CustomerFinancePage bu dosyadan import eder).
+export {
+  getCollections,
+  getCollectionById,
+  createCollection,
+  deleteCollection,
+} from "./collectionService.js";
 
 // ─── Installment (Taksit/Senet) ──────────────────────────────────────────────
+// Yeni mimaride vade/taksit kullanılmayacak; eski arayüzler `undefined` hatası
+// vermesin diye fonksiyonlar korunur (seed verisinde taksit yoktur).
 
-export const getInstallments = async (params = {}) => {
-  try {
-    const response = await api.get("/installments", { params });
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const getInstallments = (params = {}) =>
+  call(() => localDb.installments.list(params));
 
-export const getOverdueInstallments = async () => {
-  try {
-    const response = await api.get("/installments/overdue");
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const getOverdueInstallments = () =>
+  call(() => localDb.installments.listOverdue());
 
-export const getCustomerInstallmentSummary = async (customerId) => {
-  try {
-    const response = await api.get(`/installments/customer/${customerId}/summary`);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const getCustomerInstallmentSummary = (customerId) =>
+  call(() => localDb.installments.customerSummary(customerId));
 
-export const getInstallmentById = async (installmentId) => {
-  try {
-    const response = await api.get(`/installments/${installmentId}`);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const getInstallmentById = (installmentId) =>
+  call(() => localDb.installments.getById(installmentId));
 
-export const createInstallment = async (installmentData) => {
-  try {
-    const response = await api.post("/installments", installmentData);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const createInstallment = (installmentData) =>
+  call(() => localDb.installments.create(installmentData));
 
-export const markInstallmentPaid = async (installmentId, paidDate) => {
-  try {
-    const response = await api.patch(`/installments/${installmentId}/paid`, { paidDate });
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const markInstallmentPaid = (installmentId, paidDate) =>
+  call(() => localDb.installments.markPaid(installmentId, paidDate));
 
-export const deleteInstallment = async (installmentId) => {
-  try {
-    const response = await api.delete(`/installments/${installmentId}`);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
-
-// ─── Collection (Tahsilat/Kasa) ──────────────────────────────────────────────
-
-export const getCollections = async (params = {}) => {
-  try {
-    const response = await api.get("/collections", { params });
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
-
-export const getCollectionById = async (collectionId) => {
-  try {
-    const response = await api.get(`/collections/${collectionId}`);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
-
-export const createCollection = async (collectionData) => {
-  try {
-    const response = await api.post("/collections", collectionData);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
-
-export const deleteCollection = async (collectionId) => {
-  try {
-    const response = await api.delete(`/collections/${collectionId}`);
-    return response.data;
-  } catch (error) {
-    handleApiError(error);
-  }
-};
+export const deleteInstallment = (installmentId) =>
+  call(() => localDb.installments.remove(installmentId));

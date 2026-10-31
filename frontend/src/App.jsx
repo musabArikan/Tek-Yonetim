@@ -110,6 +110,7 @@ const normalizeTransaction = (transaction) => {
   );
 
   return {
+    ...transaction,
     id: transaction._id || transaction.id,
     musteriId: customerId,
     tarih: transaction.tarih || transaction.createdAt,
@@ -136,6 +137,7 @@ const normalizeTransaction = (transaction) => {
 };
 
 const normalizeStock = (stock) => ({
+  ...stock,
   id: stock._id || stock.id,
   urunKodu: stock.urunKodu || "",
   marka: stock.marka || "",
@@ -388,7 +390,7 @@ function App() {
 
     loadData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated]);
+  }, [isAuthenticated, authSession?.tenantId]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -844,6 +846,9 @@ function App() {
           availablePages={availablePages}
           canCreateSale={canCreateSale}
           role={userRole}
+          storeName={authSession?.storeName}
+          storeOwner={authSession?.storeOwner}
+          userName={`${authSession?.ad || ""} ${authSession?.soyad || ""}`.trim()}
           onPageChange={handlePageChange}
           onExistingSale={() => setShowExistingSaleModal(true)}
           onNewCustomerSale={() => setShowNewCustomerModal(true)}
@@ -883,6 +888,7 @@ function App() {
           ) : activePage === "personeller" ? (
             <UserManagementPage
               currentUserId={currentUserId}
+              currentUserEmail={authSession?.email}
               onSessionRefresh={refreshAuthSession}
             />
           ) : activePage === "transferler" ? (

@@ -1,4 +1,4 @@
-import api from "../utils/api";
+import { localDb } from "../utils/localDb.js";
 
 /**
  * Sayfa re-auth doğrulaması: kullanıcının pagePasswords[page] ile şifreyi karşılaştırır.
@@ -6,10 +6,8 @@ import api from "../utils/api";
  * @param {string} password
  * @returns {{ authorized: boolean, noPassword?: boolean }}
  */
-export const verifyPagePassword = async (page, password) => {
-  const response = await api.post("/auth/re-auth", { page, password });
-  return response.data;
-};
+export const verifyPagePassword = (page, password) =>
+  localDb.auth.verifyPagePassword({ page, password });
 
 /**
  * Admin: bir kullanıcı için sayfa şifresi atar (boş string = kilit kaldır).
@@ -17,7 +15,5 @@ export const verifyPagePassword = async (page, password) => {
  * @param {string} page
  * @param {string} password
  */
-export const setUserPagePassword = async (userId, page, password) => {
-  const response = await api.patch(`/users/${userId}/page-password`, { page, password });
-  return response.data;
-};
+export const setUserPagePassword = (userId, page, password) =>
+  localDb.auth.setPagePassword(userId, { page, password });

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Bell } from "lucide-react";
 import { toast } from "react-toastify";
 import { formatCurrency, getFullName } from "../utils/formatters";
-import api from "../utils/api";
+import { sendReminder } from "../services/reportService";
 
 export default function DebtorsPage({ customers, onSelectCustomer }) {
   const [sendingId, setSendingId] = useState(null);
@@ -18,7 +18,7 @@ export default function DebtorsPage({ customers, onSelectCustomer }) {
     e.stopPropagation(); // Müşteri satırına tıklamayı engelle
     setSendingId(customer.id);
     try {
-      await api.post("/reports/send-reminder", {
+      await sendReminder({
         customerId: customer.id,
         message: `Sayın ${getFullName(customer)}, ${formatCurrency(customer.toplamKalanBakiye)} tutarındaki borcunuzu ödemenizi rica ederiz.`,
         channel: "sms",
