@@ -1330,6 +1330,57 @@ const stocks = {
 
 // ─── Ürünler ve stok hareketleri ──────────────────────────────────────────────
 
+export const DEFAULT_BRANDS = [
+  "Arçelik",
+  "Beko",
+  "Bosch",
+  "Siemens",
+  "Profilo",
+  "Vestel",
+  "Altus",
+  "Regal",
+  "Grundig",
+  "Samsung",
+  "LG",
+  "Philips",
+  "Tefal",
+  "Kumtel",
+  "Uğur",
+];
+
+export const DEFAULT_CATEGORIES = [
+  "Buzdolabı",
+  "Çamaşır Makinesi",
+  "Bulaşık Makinesi",
+  "Kurutma Makinesi",
+  "Ankastre Set",
+  "Fırın",
+  "Davlumbaz",
+  "Derin Dondurucu",
+  "Televizyon",
+  "Klima",
+];
+
+const getActiveStoreRecord = (db) => {
+  const tenantId = getCurrentTenantId(db);
+  return db.stores.find((s) => sameId(s._id, tenantId)) ?? db.stores[0];
+};
+
+const uniqueStringsTr = (items = []) => {
+  const seen = new Set();
+  const result = [];
+  items.forEach((raw) => {
+    const clean = str(raw);
+    if (!clean) return;
+    const key = lc(clean);
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(clean);
+    }
+  });
+  return result;
+};
+
 const findProduct = (db, id) =>
   db.products.find((p) => !p.isDeleted && inTenant(p) && sameId(p._id, id));
 
@@ -1344,6 +1395,64 @@ const assertUniqueBarcode = (db, barkod, exceptId) => {
 const products = {
   list: () => run((db) => active(db.products).sort(byDateDesc("createdAt"))),
 
+  listBrands: () =>
+    run((db) => {
+      const store = getActiveStoreRecord(db);
+      const custom = Array.isArray(store?.customBrands) ? store.customBrands : [];
+      const fromProducts = active(db.products).map((p) => p.marka).filter(Boolean);
+      return uniqueStringsTr([...DEFAULT_BRANDS, ...custom, ...fromProducts]);
+    }),
+
+  addBrand: (name) =>
+    run(
+      (db) => {
+        const clean = str(name);
+        if (!clean) throw createHttpError("Marka adı boş olamaz", 400);
+        const store = getActiveStoreRecord(db);
+        if (store) {
+          const existing = Array.isArray(store.customBrands) ? store.customBrands : [];
+          store.customBrands = uniqueStringsTr([...existing, clean]);
+          touch(store);
+        }
+        const fromProducts = active(db.products).map((p) => p.marka).filter(Boolean);
+        return uniqueStringsTr([
+          ...DEFAULT_BRANDS,
+          ...(store?.customBrands || []),
+          ...fromProducts,
+        ]);
+      },
+      { write: true },
+    ),
+
+  listCategories: () =>
+    run((db) => {
+      const store = getActiveStoreRecord(db);
+      const custom = Array.isArray(store?.customCategories) ? store.customCategories : [];
+      const fromProducts = active(db.products).map((p) => p.kategori).filter(Boolean);
+      return uniqueStringsTr([...DEFAULT_CATEGORIES, ...custom, ...fromProducts]);
+    }),
+
+  addCategory: (name) =>
+    run(
+      (db) => {
+        const clean = str(name);
+        if (!clean) throw createHttpError("Kategori adı boş olamaz", 400);
+        const store = getActiveStoreRecord(db);
+        if (store) {
+          const existing = Array.isArray(store.customCategories) ? store.customCategories : [];
+          store.customCategories = uniqueStringsTr([...existing, clean]);
+          touch(store);
+        }
+        const fromProducts = active(db.products).map((p) => p.kategori).filter(Boolean);
+        return uniqueStringsTr([
+          ...DEFAULT_CATEGORIES,
+          ...(store?.customCategories || []),
+          ...fromProducts,
+        ]);
+      },
+      { write: true },
+    ),
+
   create: (payload) =>
     run(
       (db) => {
@@ -1354,13 +1463,29 @@ const products = {
         const barkod = str(payload.barkod);
         assertUniqueBarcode(db, barkod);
 
+        const urunKodu =
+          str(payload.urunKodu) ||
+          barkod ||
+          `URN-${Date.now().toString(36).slice(-5).toUpperCase()}`;
+        const marka = str(payload.marka);
+        const kategori = str(payload.kategori);
+
+        // Yeni marka veya kategori girildiyse mağaza listesine de kaydet
+        const store = getActiveStoreRecord(db);
+        if (store && marka) {
+          store.customBrands = uniqueStringsTr([...(store.customBrands || []), marka]);
+        }
+        if (store && kategori) {
+          store.customCategories = uniqueStringsTr([...(store.customCategories || []), kategori]);
+        }
+
         const product = newEntity("prd", {
           createdBy: actor._id,
-          urunKodu: str(payload.urunKodu),
-          marka: str(payload.marka),
+          urunKodu,
+          marka,
           ad,
-          kategori: str(payload.kategori),
-          barkod,
+          kategori,
+          barkod: barkod || urunKodu,
           seriNo: str(payload.seriNo),
           alisFiyati: Math.max(0, num(payload.alisFiyati)),
           satisFiyati: Math.max(0, num(payload.satisFiyati)),
@@ -1371,14 +1496,23 @@ const products = {
         });
         db.products.push(product);
 
-        // Ürün kodu verildiyse satış tarafının kullandığı stok kaydıyla bağla
-        if (product.urunKodu && !stockByCode(db, product.urunKodu)) {
+        // Satış tarafının kullandığı stok kaydıyla bağla
+        const existingStock = stockByCode(db, product.urunKodu);
+        if (existingStock) {
+          existingStock.urunAdi = product.ad;
+          existingStock.marka = product.marka || existingStock.marka || "Belirtilmedi";
+          existingStock.kategori = product.kategori;
+          existingStock.alisFiyati = product.alisFiyati;
+          existingStock.satisFiyati = product.satisFiyati;
+          existingStock.adet = product.mevcutStok;
+          touch(existingStock);
+        } else if (product.urunKodu) {
           db.stocks.push(
             newEntity("stk", {
               createdBy: actor._id,
               urunKodu: product.urunKodu,
               urunAdi: product.ad,
-              marka: product.marka || "Profilo",
+              marka: product.marka || "Belirtilmedi",
               kategori: product.kategori,
               alisFiyati: product.alisFiyati,
               satisFiyati: product.satisFiyati,
@@ -1389,7 +1523,28 @@ const products = {
           );
         }
 
-        logAction(db, actor, "URUN_EKLE", "Product", product._id, { ad: product.ad });
+        if (product.mevcutStok > 0) {
+          db.stockHistory.push(
+            newEntity("mov", {
+              performedBy: actor._id,
+              productId: product._id,
+              urunKodu: product.urunKodu,
+              hareketTipi: "Giriş",
+              miktar: product.mevcutStok,
+              oncekiStok: 0,
+              sonrakiStok: product.mevcutStok,
+              aciklama: "İlk ürün stok girişi",
+              cancelledBy: null,
+              cancelledAt: null,
+            }),
+          );
+        }
+
+        logAction(db, actor, "URUN_EKLE", "Product", product._id, {
+          ad: product.ad,
+          marka: product.marka,
+          kategori: product.kategori,
+        });
         return product;
       },
       { write: true },
@@ -1404,24 +1559,85 @@ const products = {
 
         if (payload.barkod !== undefined) assertUniqueBarcode(db, str(payload.barkod), product._id);
 
-        const allowed = [
+        const oldCode = product.urunKodu;
+        const allowedStrings = [
           "ad",
+          "marka",
           "kategori",
+          "urunKodu",
           "barkod",
           "seriNo",
-          "alisFiyati",
-          "satisFiyati",
-          "kritikStokSeviyesi",
-          "garantiSuresi",
           "tedarikci",
         ];
-        allowed.forEach((field) => {
+        const allowedNumbers = [
+          "alisFiyati",
+          "satisFiyati",
+          "mevcutStok",
+          "kritikStokSeviyesi",
+          "garantiSuresi",
+        ];
+
+        allowedStrings.forEach((field) => {
           if (payload[field] !== undefined) {
-            product[field] = typeof payload[field] === "string" ? str(payload[field]) : num(payload[field]);
+            product[field] = str(payload[field]);
           }
         });
+        allowedNumbers.forEach((field) => {
+          if (payload[field] !== undefined) {
+            product[field] = Math.max(0, num(payload[field]));
+          }
+        });
+
+        if (!product.urunKodu && product.barkod) {
+          product.urunKodu = product.barkod;
+        }
+
+        // Özel marka/kategori eklendiyse mağaza listesine de kaydet
+        const store = getActiveStoreRecord(db);
+        if (store && product.marka) {
+          store.customBrands = uniqueStringsTr([...(store.customBrands || []), product.marka]);
+        }
+        if (store && product.kategori) {
+          store.customCategories = uniqueStringsTr([
+            ...(store.customCategories || []),
+            product.kategori,
+          ]);
+        }
+
         touch(product);
-        logAction(db, actor, "URUN_GUNCELLE", "Product", product._id, { ad: product.ad });
+
+        // İlgili stok kaydını eşitle
+        const stock = stockByCode(db, oldCode) || stockByCode(db, product.urunKodu);
+        if (stock) {
+          stock.urunKodu = product.urunKodu || stock.urunKodu;
+          stock.urunAdi = product.ad;
+          stock.marka = product.marka || stock.marka;
+          stock.kategori = product.kategori;
+          stock.alisFiyati = product.alisFiyati;
+          stock.satisFiyati = product.satisFiyati;
+          stock.adet = Math.max(num(product.mevcutStok), num(stock.envanterdekiAdet));
+          touch(stock);
+        } else if (product.urunKodu) {
+          db.stocks.push(
+            newEntity("stk", {
+              createdBy: actor._id,
+              urunKodu: product.urunKodu,
+              urunAdi: product.ad,
+              marka: product.marka || "Belirtilmedi",
+              kategori: product.kategori,
+              alisFiyati: product.alisFiyati,
+              satisFiyati: product.satisFiyati,
+              adet: product.mevcutStok,
+              envanterdekiAdet: 0,
+              serialNumbers: [],
+            }),
+          );
+        }
+
+        logAction(db, actor, "URUN_GUNCELLE", "Product", product._id, {
+          ad: product.ad,
+          marka: product.marka,
+        });
         return product;
       },
       { write: true },
@@ -1435,6 +1651,11 @@ const products = {
         if (!product) throw createHttpError("Ürün bulunamadı", 404);
         product.isDeleted = true;
         touch(product);
+        if (product.urunKodu) {
+          db.stocks = db.stocks.filter(
+            (s) => !(inTenant(s) && s.urunKodu === product.urunKodu && num(s.envanterdekiAdet) === 0),
+          );
+        }
         logAction(db, actor, "URUN_SIL", "Product", product._id, { ad: product.ad });
         return { message: "Ürün silindi" };
       },

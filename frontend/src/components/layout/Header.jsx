@@ -5,10 +5,8 @@ import { getAuthSession } from "../../utils/authStorage";
 const navItems = [
   { id: "dashboard", label: "Dashboard" },
   { id: "musteriler", label: "Müşteriler" },
-  { id: "stok", label: "Stok" },
   { id: "urun-stok", label: "Ürün & Stok" },
   { id: "envanter", label: "Emanetler" },
-  { id: "transferler", label: "Transferler" },
   { id: "musteri-finans", label: "Finans & Senetler" },
   { id: "raporlar", label: "Raporlar" },
   { id: "personeller", label: "Personeller" },

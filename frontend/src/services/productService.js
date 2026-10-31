@@ -13,6 +13,18 @@ export const updateProduct = (id, productData) =>
 
 export const deleteProduct = (id) => call(() => localDb.products.remove(id));
 
+// ─── Marka ve Kategori Listeleri ──────────────────────────────────────────────
+
+export const getBrands = () => call(() => localDb.products.listBrands());
+
+export const addBrand = (name) => call(() => localDb.products.addBrand(name));
+
+export const getCategories = () =>
+  call(() => localDb.products.listCategories());
+
+export const addCategory = (name) =>
+  call(() => localDb.products.addCategory(name));
+
 // ─── Stok Hareketleri ────────────────────────────────────────────────────────
 
 export const getStockMovements = (productId = null) =>

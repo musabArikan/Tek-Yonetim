@@ -4,11 +4,9 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Header from "./components/layout/Header";
 import SummaryCards from "./components/dashboard/SummaryCards";
-import StockPage from "./pages/StockPage";
 import StockManagementPage from "./pages/StockManagementPage";
 import InventoryPage from "./pages/InventoryPage";
 import UserManagementPage from "./pages/UserManagementPage";
-import TransferShipmentPage from "./pages/TransferShipmentPage";
 import CustomerFinancePage from "./pages/CustomerFinancePage";
 import ZRaporuPage from "./pages/ZRaporuPage";
 import CustomerList from "./components/customers/CustomerList";
@@ -36,11 +34,7 @@ import {
   getTransactions,
   createTransaction,
 } from "./services/transactionService";
-import {
-  addOrUpdateStock,
-  getStocks,
-  updateStockQuantity,
-} from "./services/stockService";
+import { getStocks } from "./services/stockService";
 import { sanitizeAmountForPayload } from "./utils/money";
 import {
   clearAuthSession,
@@ -63,11 +57,9 @@ const defaultDefterSuggestions = [
 ];
 
 const getPageFromPath = (pathname) => {
-  if (pathname === "/stok") return "stok";
   if (pathname === "/envanter") return "envanter";
   if (pathname === "/personeller") return "personeller";
-  if (pathname === "/urun-stok") return "urun-stok";
-  if (pathname === "/transferler") return "transferler";
+  if (pathname === "/urun-stok" || pathname === "/stok") return "urun-stok";
   if (pathname === "/musteri-finans") return "musteri-finans";
   if (pathname === "/raporlar") return "raporlar";
   if (pathname === "/dashboard") return "dashboard";
@@ -189,13 +181,15 @@ function App() {
   );
   const availablePages = useMemo(
     () =>
-      ["dashboard", "musteriler", "stok", "envanter", "personeller", "urun-stok", "transferler", "musteri-finans", "raporlar"].filter(
+      ["dashboard", "musteriler", "urun-stok", "envanter", "personeller", "musteri-finans", "raporlar"].filter(
         (pageId) =>
           pageId === "musteriler" ||
           (pageId === "dashboard" && isAdmin) ||
           (pageId === "personeller" && isAdmin) ||
           (pageId === "raporlar" && isAdmin) ||
+          (pageId === "urun-stok" && !isPageLocked(pageLocks, "stok") && !isPageLocked(pageLocks, "urun-stok")) ||
           (!isPageLocked(pageLocks, pageId) &&
+            pageId !== "urun-stok" &&
             pageId !== "personeller" &&
             pageId !== "raporlar" &&
             pageId !== "dashboard"),
@@ -420,12 +414,7 @@ function App() {
     }
 
     if (location.pathname === "/stok") {
-      if (isPageLocked(pageLocks, "stok")) {
-        redirectUnauthorizedPage("stok");
-        return;
-      }
-      if (!checkPassword("stok", "stok")) return;
-      setActivePage("stok");
+      syncRoute("urun-stok", "/urun-stok", true);
       return;
     }
 
@@ -463,21 +452,12 @@ function App() {
     }
 
     if (location.pathname === "/urun-stok") {
-      if (isPageLocked(pageLocks, "urun-stok")) {
+      if (isPageLocked(pageLocks, "stok") || isPageLocked(pageLocks, "urun-stok")) {
         redirectUnauthorizedPage("urun-stok");
         return;
       }
+      if (!checkPassword("urun-stok", "stok")) return;
       setActivePage("urun-stok");
-      return;
-    }
-
-    if (location.pathname === "/transferler") {
-      if (isPageLocked(pageLocks, "transferler")) {
-        redirectUnauthorizedPage("transferler");
-        return;
-      }
-      if (!checkPassword("transferler", "transferler")) return;
-      setActivePage("transferler");
       return;
     }
 
@@ -533,7 +513,11 @@ function App() {
 
   const handlePageChange = useCallback(
     (pageId, isFromNav = true) => {
-      if (pageId !== "home" && isPageLocked(pageLocks, pageId)) {
+      const isLocked =
+        pageId === "urun-stok"
+          ? isPageLocked(pageLocks, "stok") || isPageLocked(pageLocks, "urun-stok")
+          : pageId !== "home" && isPageLocked(pageLocks, pageId);
+      if (isLocked) {
         redirectUnauthorizedPage(pageId);
         return;
       }
@@ -544,7 +528,12 @@ function App() {
 
       // Check if the page is password-protected for this user
       const hasPagePasswords = authSession?.hasPagePasswords || {};
-      const reAuthKey = pageId === "musteri-finans" ? "finans" : pageId;
+      const reAuthKey =
+        pageId === "musteri-finans"
+          ? "finans"
+          : pageId === "urun-stok"
+          ? "stok"
+          : pageId;
       if (hasPagePasswords[reAuthKey]) {
         navigateWithReAuth(pageId, reAuthKey);
         return;
@@ -553,11 +542,9 @@ function App() {
       const pagePathMap = {
         dashboard: "/dashboard",
         musteriler: "/musteriler",
-        stok: "/stok",
         envanter: "/envanter",
         personeller: "/personeller",
         "urun-stok": "/urun-stok",
-        transferler: "/transferler",
         "musteri-finans": "/musteri-finans",
         raporlar: "/raporlar",
       };
@@ -575,11 +562,9 @@ function App() {
         const pagePathMap = {
           dashboard: "/dashboard",
           musteriler: "/musteriler",
-          stok: "/stok",
           envanter: "/envanter",
           personeller: "/personeller",
           "urun-stok": "/urun-stok",
-          transferler: "/transferler",
           "musteri-finans": "/musteri-finans",
           raporlar: "/raporlar",
         };
@@ -773,46 +758,6 @@ function App() {
     [refreshDashboardData],
   );
 
-  const handleAddStock = useCallback(
-    (formData) => {
-      setIsStockSubmitting(true);
-      setStockError("");
-
-      return addOrUpdateStock(formData)
-        .then(() => refreshStockData())
-        .catch((error) => {
-          console.error("Hata Detayı:", error);
-          setStockError(error?.response?.data?.message || "Stok eklenemedi.");
-          throw error;
-        })
-        .finally(() => {
-          setIsStockSubmitting(false);
-        });
-    },
-    [refreshStockData],
-  );
-
-  const handleUpdateStockQuantity = useCallback(
-    (stockId, adet) => {
-      setIsStockSubmitting(true);
-      setStockError("");
-
-      return updateStockQuantity(stockId, { adet })
-        .then(() => refreshStockData())
-        .catch((error) => {
-          console.error("Hata Detayı:", error);
-          setStockError(
-            error?.response?.data?.message || "Stok miktarı güncellenemedi.",
-          );
-          throw error;
-        })
-        .finally(() => {
-          setIsStockSubmitting(false);
-        });
-    },
-    [refreshStockData],
-  );
-
   const handleDeleteCustomer = useCallback(
     (customer) => {
       if (!customer) return;
@@ -871,28 +816,19 @@ function App() {
               onSelectCustomer={(id) => handleSelectCustomer(id, "musteri-finans")}
               onNewCustomerSale={() => setShowNewCustomerModal(true)}
             />
-          ) : activePage === "stok" ? (
-            <StockPage
-              stock={stock}
-              onAddStock={handleAddStock}
-              onUpdateStockQuantity={handleUpdateStockQuantity}
-              isLoading={isStockLoading}
-              errorMessage={stockError}
-              isSubmitting={isStockSubmitting}
-              canManageStock={canManageStock}
-            />
           ) : activePage === "envanter" ? (
             <InventoryPage canManageInventory={canManageInventory} />
           ) : activePage === "urun-stok" ? (
-            <StockManagementPage canManageStock={canManageStock} />
+            <StockManagementPage
+              canManageStock={canManageStock}
+              onStockChange={refreshStockData}
+            />
           ) : activePage === "personeller" ? (
             <UserManagementPage
               currentUserId={currentUserId}
               currentUserEmail={authSession?.email}
               onSessionRefresh={refreshAuthSession}
             />
-          ) : activePage === "transferler" ? (
-            <TransferShipmentPage />
           ) : activePage === "musteri-finans" ? (
             <CustomerFinancePage initialCustomerId={financeTargetId} />
           ) : activePage === "raporlar" ? (
