@@ -161,17 +161,61 @@ const persist = (db) => {
   }
 };
 
+const ensureDbMigrations = (db) => {
+  if (!db) return db;
+  let mutated = false;
+
+  if (!Array.isArray(db.expenses)) {
+    const sample = buildSeedDatabase();
+    db.expenses = Array.isArray(sample.expenses) ? sample.expenses : [];
+    mutated = true;
+  }
+
+  // Geçmiş satış işlemlerinde alisFiyati eksikse ürün kartından tamamla
+  if (Array.isArray(db.transactions) && Array.isArray(db.products)) {
+    db.transactions.forEach((tx) => {
+      if (tx.islemTuru === "Satış" && Array.isArray(tx.urunler)) {
+        let txMutated = false;
+        tx.urunler.forEach((line) => {
+          if (line.alisFiyati === undefined) {
+            const p = db.products.find(
+              (prod) =>
+                !prod.isDeleted &&
+                sameId(prod.tenantId || STORE_ID, tx.tenantId || STORE_ID) &&
+                prod.urunKodu === line.urunKodu,
+            );
+            line.alisFiyati = num(p?.alisFiyati, 0);
+            line.toplamMaliyet = round2(line.alisFiyati * num(line.adet, 0));
+            txMutated = true;
+          }
+        });
+        if (tx.toplamMaliyet === undefined || txMutated) {
+          tx.toplamMaliyet = round2(
+            tx.urunler.reduce((sum, l) => sum + num(l.alisFiyati, 0) * num(l.adet, 0), 0),
+          );
+          mutated = true;
+        }
+      }
+    });
+  }
+
+  if (mutated) {
+    persist(db);
+  }
+  return db;
+};
+
 const loadDb = () => {
   const raw = readStorage();
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
-      if (parsed?.version === DB_VERSION) return parsed;
+      if (parsed?.version === DB_VERSION) return ensureDbMigrations(parsed);
     } catch (error) {
       console.warn("[localDb] Kayıtlı veri okunamadı, seed yeniden yükleniyor:", error);
     }
   } else if (memoryDb) {
-    return clone(memoryDb);
+    return ensureDbMigrations(clone(memoryDb));
   }
 
   const seeded = buildSeedDatabase();
@@ -520,6 +564,19 @@ const seedDemoDataForStore = (db, store, ownerUser) => {
     db.shipments.push(mapped);
   });
 
+  (sample.expenses || []).forEach((ex) => {
+    const mapped = {
+      ...ex,
+      _id: mapId(ex._id),
+      id: mapId(ex.id),
+      tenantId: store._id,
+      storeId: store._id,
+      createdBy: ownerUser._id,
+      createdByName: ownerFullName,
+    };
+    db.expenses.push(mapped);
+  });
+
   sample.actionLogs.forEach((l) => {
     const mapped = {
       ...l,
@@ -731,6 +788,75 @@ const stores = {
       const tenantId = getCurrentTenantId(db);
       return db.stores.find((s) => sameId(s._id, tenantId)) ?? db.stores[0];
     }),
+
+  updateProfile: (payload = {}) =>
+    run(
+      (db) => {
+        const actor = getActor(db);
+        const tenantId = actor.tenantId || getCurrentTenantId(db);
+        const store = db.stores.find((s) => sameId(s._id, tenantId)) ?? db.stores[0];
+        if (!store) throw createHttpError("Mağaza kaydı bulunamadı", 404);
+
+        const nextName = str(payload.ad ?? payload.storeName ?? payload.magazaAdi ?? store.ad);
+        const nextOwner = str(
+          payload.yetkili ?? payload.storeOwner ?? payload.yetkiliAdSoyad ?? store.yetkili,
+        );
+        const nextPhone = str(payload.telefon ?? payload.phone ?? store.telefon);
+        const nextAddress = str(payload.adres ?? payload.address ?? store.adres);
+        const nextUnvan = str(payload.unvan ?? nextName ?? store.unvan);
+
+        if (!nextName) {
+          throw createHttpError("Mağaza adı zorunludur", 400);
+        }
+        if (!nextOwner) {
+          throw createHttpError("Yetkili adı soyadı zorunludur", 400);
+        }
+
+        store.ad = nextName;
+        store.unvan = nextUnvan || nextName;
+        store.yetkili = nextOwner;
+        store.telefon = nextPhone;
+        store.adres = nextAddress;
+        if (payload.vergiDairesi !== undefined) store.vergiDairesi = str(payload.vergiDairesi);
+        if (payload.vergiNo !== undefined) store.vergiNo = str(payload.vergiNo);
+        touch(store);
+
+        // Aktif kullanıcı mağaza sahibi (admin) ise adını da senkronize et
+        if (actor.role === "admin" && nextOwner) {
+          const parts = nextOwner.split(/\s+/).filter(Boolean);
+          if (parts.length > 1) {
+            actor.ad = parts.slice(0, -1).join(" ");
+            actor.soyad = parts[parts.length - 1];
+          } else if (parts.length === 1) {
+            actor.ad = parts[0];
+          }
+          touch(actor);
+        }
+
+        // Aktif oturumu da anında güncelle
+        const currentSession = getAuthSession();
+        const refreshedSession = buildSessionForUser(actor, db);
+        const mergedSession = currentSession
+          ? {
+              ...currentSession,
+              ...refreshedSession,
+              storeName: store.ad,
+              storeOwner: store.yetkili,
+              token: currentSession.token || refreshedSession.token,
+            }
+          : refreshedSession;
+        setAuthSession(mergedSession);
+
+        logAction(db, actor, "MAGAZA_GUNCELLE", "Store", store._id, {
+          ad: store.ad,
+          yetkili: store.yetkili,
+          telefon: store.telefon,
+        });
+
+        return { store, session: mergedSession };
+      },
+      { write: true },
+    ),
 };
 
 // ─── Personeller ──────────────────────────────────────────────────────────────
@@ -993,13 +1119,35 @@ const createTransactionForCustomer = (db, customer, payload, actor) => {
   const enrichedLines = lines.map((line) => {
     const product = productByCode(db, line.urunKodu);
     const stock = stockByCode(db, line.urunKodu);
+    const alisFiyati = Math.max(
+      0,
+      num(
+        line.alisFiyati !== undefined
+          ? line.alisFiyati
+          : (product?.alisFiyati ?? stock?.alisFiyati ?? 0),
+      ),
+    );
+    const birimFiyat = Math.max(
+      0,
+      num(
+        line.birimFiyat !== undefined
+          ? line.birimFiyat
+          : (product?.satisFiyati ?? stock?.satisFiyati ?? 0),
+      ),
+    );
     return {
       ...line,
       urunAdi: product?.ad || stock?.urunAdi || line.urunKodu,
       marka: product?.marka || stock?.marka || "",
-      birimFiyat: product?.satisFiyati ?? 0,
+      alisFiyati,
+      birimFiyat,
+      toplamMaliyet: round2(alisFiyati * num(line.adet)),
     };
   });
+
+  const toplamMaliyet = isTahsilat
+    ? 0
+    : round2(enrichedLines.reduce((sum, l) => sum + num(l.alisFiyati) * num(l.adet), 0));
 
   setBalance(customer, nextBalance);
   customer.sonIslemTarihi = at;
@@ -1018,6 +1166,7 @@ const createTransactionForCustomer = (db, customer, payload, actor) => {
       ? enrichedLines.map((l) => `${l.urunKodu} (x${l.adet})`).join(", ")
       : "İşlem",
     toplamTutar: isTahsilat ? collectionAmount : total,
+    toplamMaliyet,
     pesinat: isTahsilat ? collectionAmount : pesinat,
     ...(isTahsilat ? { tutar: collectionAmount, odenenTutar: collectionAmount } : {}),
     kalanHesap: isTahsilat ? customer.toplamKalanBakiye : remaining,
@@ -2749,10 +2898,251 @@ const actionLogs = {
     ),
 };
 
+// ─── Mağaza Giderleri (Expenses) & Aylık Ciro / Net Kazanç ────────────────────
+
+export const EXPENSE_CATEGORIES = [
+  "Maaş",
+  "Kira",
+  "Fatura",
+  "Malzeme/Hırdavat",
+  "Diğer",
+];
+
+const inStoreExpense = (item, tenantId = getCurrentTenantId()) =>
+  !item?.isDeleted &&
+  (sameId(item?.storeId, tenantId) || sameId(item?.tenantId || STORE_ID, tenantId));
+
+const calculateTransactionCost = (db, tx) => {
+  if (!Array.isArray(tx.urunler) || tx.urunler.length === 0) {
+    return round2(num(tx.toplamMaliyet, 0));
+  }
+  return round2(
+    tx.urunler.reduce((sum, line) => {
+      const qty = Math.max(0, num(line.adet, 0));
+      if (line.alisFiyati !== undefined && line.alisFiyati !== null) {
+        return sum + num(line.alisFiyati, 0) * qty;
+      }
+      const product = productByCode(db, line.urunKodu);
+      const stock = stockByCode(db, line.urunKodu);
+      const fallbackCost = num(product?.alisFiyati ?? stock?.alisFiyati ?? 0);
+      return sum + fallbackCost * qty;
+    }, 0),
+  );
+};
+
+const resolveMonthRange = ({ year, month, startDate, endDate } = {}) => {
+  if (startDate && endDate) {
+    return {
+      range: [dayBounds(startDate)[0], dayBounds(endDate)[1]],
+      isCurrentMonth: false,
+      year: new Date(startDate).getFullYear(),
+      month: new Date(startDate).getMonth() + 1,
+    };
+  }
+
+  const now = new Date();
+  const targetYear = Number(year) || now.getFullYear();
+  const targetMonth = Number(month) || now.getMonth() + 1; // 1..12
+  const isCurrentMonth =
+    targetYear === now.getFullYear() && targetMonth === now.getMonth() + 1;
+
+  const startMs = new Date(targetYear, targetMonth - 1, 1, 0, 0, 0, 0).getTime();
+  // İçinde bulunulan ay seçiliyse ayın 1'inden bugünün sonuna kadar
+  const endMs = isCurrentMonth
+    ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime()
+    : new Date(targetYear, targetMonth, 0, 23, 59, 59, 999).getTime();
+
+  return {
+    range: [startMs, endMs],
+    isCurrentMonth,
+    year: targetYear,
+    month: targetMonth,
+  };
+};
+
+const expenses = {
+  categories: () => EXPENSE_CATEGORIES,
+
+  list: (params = {}) =>
+    run((db) => {
+      const tenantId = getCurrentTenantId(db);
+      const hasPeriodFilter = Boolean(
+        params.year || params.month || params.startDate || params.endDate,
+      );
+      const period = hasPeriodFilter ? resolveMonthRange(params) : null;
+
+      return (db.expenses || [])
+        .filter((e) => inStoreExpense(e, tenantId))
+        .filter((e) => !params.category || e.category === params.category)
+        .filter((e) => !period || inRange(e.date || e.createdAt, period.range))
+        .sort(byDateDesc("date"));
+    }),
+
+  create: (payload = {}) =>
+    run(
+      (db) => {
+        const actor = getActor(db);
+        const tenantId = actor.tenantId || getCurrentTenantId(db);
+        const amount = round2(num(payload.amount));
+        if (!(amount > 0)) {
+          throw createHttpError("Gider tutarı 0'dan büyük olmalıdır", 400);
+        }
+
+        const category = str(payload.category) || "Diğer";
+        if (!EXPENSE_CATEGORIES.includes(category)) {
+          throw createHttpError("Geçersiz gider kategorisi", 400);
+        }
+
+        const date = normalizeDate(payload.date);
+        const description = str(payload.description);
+
+        const expense = newEntity("exp", {
+          tenantId,
+          storeId: tenantId,
+          amount,
+          date,
+          category,
+          description,
+          createdBy: actor._id,
+          createdByName: fullName(actor),
+          createdAt: date,
+          updatedAt: date,
+        });
+
+        if (!Array.isArray(db.expenses)) db.expenses = [];
+        db.expenses.push(expense);
+
+        logAction(
+          db,
+          actor,
+          "GIDER_EKLE",
+          "Expense",
+          expense._id,
+          { category, amount, description },
+          date,
+        );
+
+        return expense;
+      },
+      { write: true },
+    ),
+
+  update: (id, payload = {}) =>
+    run(
+      (db) => {
+        const actor = getActor(db);
+        const tenantId = actor.tenantId || getCurrentTenantId(db);
+        const expense = (db.expenses || []).find(
+          (e) => inStoreExpense(e, tenantId) && sameId(e._id || e.id, id),
+        );
+        if (!expense) throw createHttpError("Gider kaydı bulunamadı", 404);
+
+        if (payload.amount !== undefined) {
+          const nextAmount = round2(num(payload.amount));
+          if (!(nextAmount > 0)) {
+            throw createHttpError("Gider tutarı 0'dan büyük olmalıdır", 400);
+          }
+          expense.amount = nextAmount;
+        }
+        if (payload.category !== undefined) {
+          const nextCategory = str(payload.category);
+          if (!EXPENSE_CATEGORIES.includes(nextCategory)) {
+            throw createHttpError("Geçersiz gider kategorisi", 400);
+          }
+          expense.category = nextCategory;
+        }
+        if (payload.date !== undefined) {
+          expense.date = normalizeDate(payload.date);
+        }
+        if (payload.description !== undefined) {
+          expense.description = str(payload.description);
+        }
+
+        touch(expense);
+        return expense;
+      },
+      { write: true },
+    ),
+
+  remove: (id) =>
+    run(
+      (db) => {
+        const actor = getActor(db);
+        const tenantId = actor.tenantId || getCurrentTenantId(db);
+        const expense = (db.expenses || []).find(
+          (e) => inStoreExpense(e, tenantId) && sameId(e._id || e.id, id),
+        );
+        if (!expense) throw createHttpError("Gider kaydı bulunamadı", 404);
+
+        expense.isDeleted = true;
+        expense.deletedBy = actor._id;
+        touch(expense);
+
+        logAction(db, actor, "GIDER_SIL", "Expense", expense._id, {
+          category: expense.category,
+          amount: expense.amount,
+        });
+
+        return { message: "Gider kaydı silindi" };
+      },
+      { write: true },
+    ),
+
+  monthlySummary: (params = {}) =>
+    run((db) => {
+      const tenantId = getCurrentTenantId(db);
+      const { range, isCurrentMonth, year, month } = resolveMonthRange(params);
+
+      const sales = active(db.transactions, tenantId)
+        .filter((t) => t.islemTuru === "Satış" && inRange(t.tarih || t.createdAt, range))
+        .sort(byDateDesc("tarih"));
+
+      const periodExpenses = (db.expenses || [])
+        .filter((e) => inStoreExpense(e, tenantId) && inRange(e.date || e.createdAt, range))
+        .sort(byDateDesc("date"));
+
+      const aylikToplamCiro = round2(
+        sales.reduce((sum, t) => sum + num(t.toplamTutar, 0), 0),
+      );
+      const satilanUrunMaliyeti = round2(
+        sales.reduce((sum, t) => sum + calculateTransactionCost(db, t), 0),
+      );
+      const brutSatisKazanci = round2(aylikToplamCiro - satilanUrunMaliyeti);
+      const dukkanGiderleri = round2(
+        periodExpenses.reduce((sum, e) => sum + num(e.amount, 0), 0),
+      );
+      const netKazanc = round2(brutSatisKazanci - dukkanGiderleri);
+      const satilanUrunAdedi = sales.reduce(
+        (sum, t) =>
+          sum +
+          (t.urunler || []).reduce((inner, line) => inner + Math.max(0, num(line.adet, 0)), 0),
+        0,
+      );
+
+      return {
+        year,
+        month,
+        isCurrentMonth,
+        periodStart: new Date(range[0]).toISOString(),
+        periodEnd: new Date(range[1]).toISOString(),
+        aylikToplamCiro,
+        satilanUrunMaliyeti,
+        brutSatisKazanci,
+        dukkanGiderleri,
+        netKazanc,
+        satisSayisi: sales.length,
+        satilanUrunAdedi,
+        giderSayisi: periodExpenses.length,
+        expenses: periodExpenses,
+      };
+    }),
+};
+
 // ─── Dışa aktarılan API ───────────────────────────────────────────────────────
 
 export const localDb = {
   auth,
+  store: stores,
   stores,
   users,
   customers,
@@ -2762,6 +3152,7 @@ export const localDb = {
   inventory,
   collections,
   installments,
+  expenses,
   branches,
   transfers,
   shipments,

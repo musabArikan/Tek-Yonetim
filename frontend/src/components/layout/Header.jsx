@@ -4,6 +4,7 @@ import { getAuthSession } from "../../utils/authStorage";
 
 const navItems = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "magazam", label: "Mağazam" },
   { id: "musteriler", label: "Müşteriler" },
   { id: "urun-stok", label: "Ürün & Stok" },
   { id: "envanter", label: "Emanetler" },

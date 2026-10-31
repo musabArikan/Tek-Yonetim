@@ -9,6 +9,7 @@ import InventoryPage from "./pages/InventoryPage";
 import UserManagementPage from "./pages/UserManagementPage";
 import CustomerFinancePage from "./pages/CustomerFinancePage";
 import ZRaporuPage from "./pages/ZRaporuPage";
+import MyStorePage from "./pages/MyStorePage";
 import CustomerList from "./components/customers/CustomerList";
 import CustomerDetails from "./components/customers/CustomerDetails";
 import PendingInventoryCard from "./components/customers/PendingInventoryCard";
@@ -57,6 +58,7 @@ const defaultDefterSuggestions = [
 ];
 
 const getPageFromPath = (pathname) => {
+  if (pathname === "/magazam") return "magazam";
   if (pathname === "/envanter") return "envanter";
   if (pathname === "/personeller") return "personeller";
   if (pathname === "/urun-stok" || pathname === "/stok") return "urun-stok";
@@ -181,20 +183,22 @@ function App() {
   );
   const availablePages = useMemo(
     () =>
-      ["dashboard", "musteriler", "urun-stok", "envanter", "personeller", "musteri-finans", "raporlar"].filter(
+      ["dashboard", "magazam", "musteriler", "urun-stok", "envanter", "personeller", "musteri-finans", "raporlar"].filter(
         (pageId) =>
           pageId === "musteriler" ||
           (pageId === "dashboard" && isAdmin) ||
+          (pageId === "magazam" && isAdminOrManager) ||
           (pageId === "personeller" && isAdmin) ||
           (pageId === "raporlar" && isAdmin) ||
           (pageId === "urun-stok" && !isPageLocked(pageLocks, "stok") && !isPageLocked(pageLocks, "urun-stok")) ||
           (!isPageLocked(pageLocks, pageId) &&
             pageId !== "urun-stok" &&
+            pageId !== "magazam" &&
             pageId !== "personeller" &&
             pageId !== "raporlar" &&
             pageId !== "dashboard"),
       ),
-    [isAdmin, pageLocks],
+    [isAdmin, isAdminOrManager, pageLocks],
   );
   const canDeleteCustomer = hasPermission(permissions, "musteriSilebilir");
   const canCollectPayment = hasPermission(permissions, "tahsilatAlabilir");
@@ -427,6 +431,15 @@ function App() {
       return;
     }
 
+    if (location.pathname === "/magazam") {
+      if (!isAdminOrManager) {
+        redirectUnauthorizedPage("magazam");
+        return;
+      }
+      setActivePage("magazam");
+      return;
+    }
+
     if (location.pathname === "/musteriler") {
       setActivePage("musteriler");
       return;
@@ -488,6 +501,7 @@ function App() {
   }, [
     authSession,
     isAdmin,
+    isAdminOrManager,
     pageLocks,
     redirectUnauthorizedPage,
     isAuthenticated,
@@ -541,6 +555,7 @@ function App() {
 
       const pagePathMap = {
         dashboard: "/dashboard",
+        magazam: "/magazam",
         musteriler: "/musteriler",
         envanter: "/envanter",
         personeller: "/personeller",
@@ -561,6 +576,7 @@ function App() {
       if (isReAuthGranted(reAuthKey)) {
         const pagePathMap = {
           dashboard: "/dashboard",
+          magazam: "/magazam",
           musteriler: "/musteriler",
           envanter: "/envanter",
           personeller: "/personeller",
@@ -808,6 +824,8 @@ function App() {
           ) : null}
           {activePage === "dashboard" ? (
             <DashboardPage onNewCustomerSale={() => setShowNewCustomerModal(true)} />
+          ) : activePage === "magazam" ? (
+            <MyStorePage onSessionRefresh={refreshAuthSession} />
           ) : activePage === "musteriler" ? (
             <CustomersPage
               customers={filteredCustomers}

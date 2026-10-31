@@ -26,3 +26,12 @@ export function sanitizeAmountForPayload(value, fallback = 0) {
 
   return normalized;
 }
+
+export function formatCurrency(value) {
+  const num = Number(value ?? 0);
+  const safe = Number.isFinite(num) ? num : 0;
+  return `${safe.toLocaleString("tr-TR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} ₺`;
+}

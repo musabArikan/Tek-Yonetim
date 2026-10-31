@@ -235,7 +235,7 @@ const TX_SPECS = [
   { d: "2026-10-27T12:45", c: 1018, by: "mehmet", type: "S", items: [["HBF113BR0T-SET", 1, 1, "Dairenin teslimi Kasım'da, o zamana kadar depoda"], ["DVL6020X", 1]], pes: 7400, pay: "Nakit", defter: "Mağaza Defteri" },
 ];
 
-/** Üretildiği ana göre değişen (bugün / dün) işlemler: Dashboard "bugün" verisi boş kalmasın. */
+/** Üretildiği ana göre değişen (bugün / dün) işlemler: Dashboard "bugün" ve Mağazam "bu ay" verisi boş kalmasın. */
 const buildRelativeTxSpecs = (now) => [
   {
     at: new Date(now.getTime() - 26 * 60 * 60 * 1000).toISOString(),
@@ -248,6 +248,17 @@ const buildRelativeTxSpecs = (now) => [
     not: "Mağazadan elden ödeme",
   },
   {
+    at: new Date(now.getTime() - 3 * 60 * 60 * 1000).toISOString(),
+    c: 1010,
+    by: "ahmet",
+    type: "S",
+    items: [["WGA254A0TR", 1], ["DVL6020X", 1]],
+    pes: 14000,
+    pay: "Kredi Kartı",
+    defter: "Mağaza Defteri",
+    not: "Mağaza satış",
+  },
+  {
     at: new Date(now.getTime() - 20 * 60 * 1000).toISOString(),
     c: 1018,
     by: "mehmet",
@@ -258,6 +269,27 @@ const buildRelativeTxSpecs = (now) => [
     not: "Kasadan tahsilat",
   },
 ];
+
+// ─── Mağaza Giderleri (Expenses) ──────────────────────────────────────────────
+// [tarih, kategori, tutar, açıklama, personel]
+const EXPENSE_SPECS = [
+  ["2026-09-05T10:00", "Kira", 28000, "Eylül 2026 mağaza ve depo kira ödemesi", "ahmet"],
+  ["2026-09-15T14:20", "Fatura", 4250, "Elektrik, su ve doğalgaz faturaları", "ayse"],
+  ["2026-09-25T16:00", "Maaş", 52000, "Eylül 2026 personel maaş ödemeleri", "ahmet"],
+  ["2026-10-05T10:30", "Kira", 28000, "Ekim 2026 mağaza ve depo kira ödemesi", "ahmet"],
+  ["2026-10-12T11:45", "Malzeme/Hırdavat", 3400, "Montaj aparatları, hortum ve kablo alımı", "zeynep"],
+  ["2026-10-18T15:10", "Fatura", 4850, "Ekim ayı elektrik, internet ve su faturaları", "ayse"],
+  ["2026-10-28T17:00", "Maaş", 52000, "Ekim 2026 personel maaş ödemeleri", "ahmet"],
+];
+
+const buildRelativeExpenseSpecs = (now) => {
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1, 10, 15, 0).toISOString();
+  const recentTime = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
+  return [
+    [firstDay, "Kira", 28000, "Aylık mağaza kira ödemesi", "ahmet"],
+    [recentTime, "Malzeme/Hırdavat", 1850, "Sevkiyat ambalaj ve montaj sarf malzemeleri", "ahmet"],
+  ];
+};
 
 // ─── Stok hareketleri ─────────────────────────────────────────────────────────
 // [tarih, ürünKodu, tip, miktar, önceki stok, açıklama, personel]
@@ -495,7 +527,9 @@ export const buildSeedDatabase = (now = new Date()) => {
           urunAdi: product.ad,
           marka: product.marka,
           adet: qty,
+          alisFiyati: product.alisFiyati,
           birimFiyat: product.satisFiyati,
+          toplamMaliyet: round2(product.alisFiyati * qty),
           envanterdeBekleyenAdet: pending,
           envanterdeMi: pending > 0,
           envanterAciklamasi: pending > 0 ? note : "",
@@ -503,6 +537,7 @@ export const buildSeedDatabase = (now = new Date()) => {
       });
 
       const total = spec.total ?? lines.reduce((sum, l) => sum + l.birimFiyat * l.adet, 0);
+      const totalCost = round2(lines.reduce((sum, l) => sum + l.alisFiyati * l.adet, 0));
       const pesinat = Math.min(spec.pes, total);
       const remaining = round2(Math.max(0, total - pesinat));
       customer.toplamKalanBakiye = round2(customer.toplamKalanBakiye + remaining);
@@ -513,6 +548,7 @@ export const buildSeedDatabase = (now = new Date()) => {
         islemTuru: "Satış",
         islemTipi: "SATIS",
         toplamTutar: total,
+        toplamMaliyet: totalCost,
         pesinat,
         kalanHesap: remaining,
         alinanTutar: pesinat,
@@ -711,6 +747,31 @@ export const buildSeedDatabase = (now = new Date()) => {
     };
   });
 
+  // Mağaza Giderleri
+  const allExpenseSpecs = [
+    ...EXPENSE_SPECS.map(([d, cat, amt, desc, by]) => [localIso(d), cat, amt, desc, by]),
+    ...buildRelativeExpenseSpecs(now),
+  ];
+  const expenses = allExpenseSpecs.map(([at, category, amount, description, by]) => {
+    const id = nextId("exp");
+    const actor = userByKey[by] || userByKey.ahmet;
+    return {
+      _id: id,
+      id,
+      tenantId: STORE_ID,
+      storeId: STORE_ID,
+      amount: round2(Number(amount)),
+      date: at,
+      category,
+      description,
+      createdBy: actor._id,
+      createdByName: fullName(actor),
+      isDeleted: false,
+      createdAt: at,
+      updatedAt: at,
+    };
+  });
+
   const sortByDateAsc = (list) => list.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
   return {
@@ -725,6 +786,7 @@ export const buildSeedDatabase = (now = new Date()) => {
     transactions: sortByDateAsc(transactions),
     collections: sortByDateAsc(collections),
     installments: [],
+    expenses: sortByDateAsc(expenses),
     actionLogs: sortByDateAsc(actionLogs),
     branches,
     transfers,
