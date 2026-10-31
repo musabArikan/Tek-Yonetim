@@ -1,270 +1,432 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { toast } from "react-toastify";
 import {
   BarChart3,
   Calendar,
   Download,
+  FileSpreadsheet,
   FileText,
   Package,
   TrendingUp,
   Wallet,
-  PrinterIcon,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Table,
 } from "lucide-react";
-import { exportData, getZRaporu } from "../services/reportService";
+import { exportData, getReportTableData } from "../services/reportService";
 
-const formatCurrency = (val) =>
-  Number(val || 0).toLocaleString("tr-TR", { style: "currency", currency: "TRY" });
+const MONTH_NAMES = [
+  "Ocak",
+  "Şubat",
+  "Mart",
+  "Nisan",
+  "Mayıs",
+  "Haziran",
+  "Temmuz",
+  "Ağustos",
+  "Eylül",
+  "Ekim",
+  "Kasım",
+  "Aralık",
+];
 
-const formatDate = (iso) => {
-  if (!iso) return "-";
-  return new Date(iso).toLocaleString("tr-TR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+const REPORT_TYPES = [
+  {
+    type: "products",
+    label: "Ürün Listesi",
+    description: "Stoktaki tüm ürünler, markalar, alış/satış fiyatları ve stok miktarları",
+    icon: Package,
+    badgeColor: "bg-blue-50 text-blue-700",
+  },
+  {
+    type: "customers",
+    label: "Müşteri Listesi",
+    description: "Kayıtlı tüm müşteriler, iletişim bilgileri ve cari bakiyeleri",
+    icon: FileText,
+    badgeColor: "bg-indigo-50 text-indigo-700",
+  },
+  {
+    type: "debtors",
+    label: "Borçlular Listesi",
+    description: "Güncel borcu bulunan müşteriler ve kalan alacak tutarları",
+    icon: Wallet,
+    badgeColor: "bg-red-50 text-red-700",
+  },
+  {
+    type: "transactions",
+    label: "İşlem Geçmişi",
+    description: "Seçilen aya ait tüm satış ve tahsilat hareketleri",
+    icon: TrendingUp,
+    badgeColor: "bg-emerald-50 text-emerald-700",
+  },
+];
+
+const formatCellValue = (columnName, value) => {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "number" && columnName.includes("(₺)")) {
+    return `${value.toLocaleString("tr-TR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} ₺`;
+  }
+  return String(value);
 };
 
-// ─── Özet Kart ────────────────────────────────────────────────────────────────
-function StatCard({ icon: Icon, label, value, sub, color = "primary" }) {
-  const colors = {
-    primary: "bg-primary-container text-on-primary-container",
-    green: "bg-green-100 text-green-800",
-    blue: "bg-blue-100 text-blue-800",
-    orange: "bg-orange-100 text-orange-800",
-  };
-
-  return (
-    <div className="bg-surface rounded-2xl border border-outline-variant p-5 flex items-start gap-4 shadow-sm">
-      <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${colors[color]}`}>
-        <Icon size={20} />
-      </div>
-      <div>
-        <p className="text-xs text-on-surface-variant font-medium">{label}</p>
-        <p className="text-xl font-bold text-on-surface mt-0.5">{value}</p>
-        {sub && <p className="text-xs text-on-surface-variant mt-0.5">{sub}</p>}
-      </div>
-    </div>
-  );
-}
-
-// ─── Ana Bileşen ──────────────────────────────────────────────────────────────
 export default function ZRaporuPage() {
-  const today = new Date().toISOString().split("T")[0];
-  const [date, setDate] = useState(today);
-  const [rapor, setRapor] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
+  const now = useMemo(() => new Date(), []);
+  const [selectedReport, setSelectedReport] = useState("products");
+  const [selectedYear, setSelectedYear] = useState(() => now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(() => now.getMonth() + 1); // 1..12
 
-  const fetchRapor = useCallback(async () => {
+  const [reportData, setReportData] = useState({
+    sheetName: "Ürün Listesi",
+    fileName: "urun-listesi.xlsx",
+    rows: [],
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const isMonthlyReport = selectedReport === "transactions";
+
+  const loadReport = useCallback(async () => {
     setIsLoading(true);
-    setError("");
-    setRapor(null);
-
     try {
-      const data = await getZRaporu(date);
-      setRapor(data);
+      const params = isMonthlyReport
+        ? { year: selectedYear, month: selectedMonth }
+        : {};
+      const data = await getReportTableData(selectedReport, params);
+      setReportData(
+        data || {
+          sheetName: "",
+          fileName: "",
+          rows: [],
+        },
+      );
     } catch (err) {
-      setError(err?.response?.data?.message || "Rapor alınamadı");
+      toast.error(err?.response?.data?.message || "Rapor verileri yüklenemedi.");
     } finally {
       setIsLoading(false);
     }
-  }, [date]);
+  }, [selectedReport, isMonthlyReport, selectedYear, selectedMonth]);
 
-  const handlePrint = () => window.print();
+  useEffect(() => {
+    loadReport();
+  }, [loadReport]);
 
-  const handleExport = async (type) => {
-    try {
-      const { blob, fileName } = await exportData(type);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName || `${type}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      alert("Export başarısız: " + (err?.response?.data?.message || err.message));
+  const handlePrevMonth = () => {
+    if (selectedMonth === 1) {
+      setSelectedMonth(12);
+      setSelectedYear((y) => y - 1);
+    } else {
+      setSelectedMonth((m) => m - 1);
     }
   };
 
+  const handleNextMonth = () => {
+    if (selectedMonth === 12) {
+      setSelectedMonth(1);
+      setSelectedYear((y) => y + 1);
+    } else {
+      setSelectedMonth((m) => m + 1);
+    }
+  };
+
+  const handleExport = async (format = "xlsx") => {
+    setIsExporting(true);
+    try {
+      const params = isMonthlyReport
+        ? { year: selectedYear, month: selectedMonth }
+        : {};
+      const { blob, fileName } = await exportData(selectedReport, params, format);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName || `${selectedReport}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(
+        `${reportData.sheetName || "Rapor"} (${format.toUpperCase()}) başarıyla indirildi.`,
+      );
+    } catch (err) {
+      toast.error(
+        "Dışa aktarma başarısız: " + (err?.response?.data?.message || err.message),
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const columns = useMemo(() => {
+    if (!reportData.rows || reportData.rows.length === 0) return [];
+    return Object.keys(reportData.rows[0]);
+  }, [reportData.rows]);
+
+  const filteredRows = useMemo(() => {
+    const rows = Array.isArray(reportData.rows) ? reportData.rows : [];
+    const q = searchQuery.toLocaleLowerCase("tr-TR").trim();
+    if (!q) return rows;
+    return rows.filter((row) =>
+      Object.values(row).some((val) =>
+        String(val ?? "")
+          .toLocaleLowerCase("tr-TR")
+          .includes(q),
+      ),
+    );
+  }, [reportData.rows, searchQuery]);
+
+  const activeReportMeta =
+    REPORT_TYPES.find((r) => r.type === selectedReport) || REPORT_TYPES[0];
+
+  const yearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return [currentYear - 3, currentYear - 2, currentYear - 1, currentYear, currentYear + 1];
+  }, []);
+
   return (
-    <div className="flex flex-col gap-6 p-2">
-      {/* Başlık */}
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-6 max-w-[1600px] mx-auto w-full">
+      {/* Sayfa Başlığı */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center">
-            <BarChart3 size={20} className="text-on-primary-container" />
+          <div className="w-11 h-11 rounded-xl bg-blue-600/10 text-blue-600 flex items-center justify-center shrink-0">
+            <BarChart3 size={22} />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-on-surface">Raporlar & Z-Raporu</h1>
-            <p className="text-xs text-on-surface-variant">Günlük kapanış, export ve işlem geçmişi</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+              Mağaza Raporları & Veri Dışa Aktarma
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500">
+              Raporları uygulama içinde tablo olarak inceleyin veya Excel / CSV olarak indirin
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Export Kartları */}
-      <div className="bg-surface rounded-2xl border border-outline-variant p-5">
-        <p className="text-sm font-semibold text-on-surface mb-4">📥 Veri Dışa Aktarma</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { type: "products", label: "Ürün Listesi", icon: Package },
-            { type: "customers", label: "Müşteri Listesi", icon: FileText },
-            { type: "debtors", label: "Borçlu Listesi", icon: Wallet },
-            { type: "actionlogs", label: "İşlem Geçmişi", icon: TrendingUp },
-          ].map(({ type, label, icon: Icon }) => (
+      {/* Rapor Seçim Kartları */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {REPORT_TYPES.map(({ type, label, description, icon: Icon, badgeColor }) => {
+          const isSelected = selectedReport === type;
+          return (
             <button
               key={type}
-              onClick={() => handleExport(type)}
-              className="flex flex-col items-center gap-2 p-3 rounded-xl border border-outline-variant hover:bg-primary-container hover:border-primary transition-all group"
+              type="button"
+              onClick={() => {
+                setSelectedReport(type);
+                setSearchQuery("");
+              }}
+              className={`text-left p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                isSelected
+                  ? "bg-blue-50/60 border-blue-600 ring-2 ring-blue-500/20 shadow-xs"
+                  : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/60"
+              }`}
             >
-              <Download size={18} className="text-primary" />
-              <Icon size={16} className="text-on-surface-variant group-hover:text-on-primary-container" />
-              <span className="text-xs font-medium text-on-surface group-hover:text-on-primary-container text-center leading-tight">
-                {label}
-              </span>
+              <div className="flex items-center justify-between gap-2">
+                <div
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                    isSelected ? "bg-blue-600 text-white" : badgeColor
+                  }`}
+                >
+                  <Icon size={20} />
+                </div>
+                <span
+                  className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                    isSelected
+                      ? "bg-blue-600 text-white"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {isSelected ? "Aktif Rapor" : "Tabloyu Aç"}
+                </span>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">{label}</h3>
+                <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
+                  {description}
+                </p>
+              </div>
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
-      {/* Z-Raporu Sorgu Formu */}
-      <div className="bg-surface rounded-2xl border border-outline-variant p-5">
-        <p className="text-sm font-semibold text-on-surface mb-4">📊 Gün Sonu (Z) Raporu</p>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex items-center gap-2 flex-1">
-            <Calendar size={16} className="text-on-surface-variant flex-shrink-0" />
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              max={today}
-              className="flex-1 rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-            />
+      {/* Seçili Raporun Uygulama İçi Tablosu + Ay/Yıl Seçici + Dışa Aktar Butonları */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
+        {/* Tablo Üst Barı */}
+        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/70 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-600/10 text-blue-600 flex items-center justify-center shrink-0">
+              <Table size={18} />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                  {activeReportMeta.label}
+                  {isMonthlyReport
+                    ? ` — ${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`
+                    : ""}
+                </h2>
+                <span className="text-xs font-semibold bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full">
+                  {filteredRows.length} Kayıt
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {activeReportMeta.description}
+              </p>
+            </div>
           </div>
-          <button
-            onClick={fetchRapor}
-            disabled={isLoading}
-            className="px-5 py-2 rounded-xl bg-primary text-on-primary text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {isLoading ? "Yükleniyor..." : "Raporu Getir"}
-          </button>
-          {rapor && (
+
+          {/* Sağ Üst Kontroller: Ay/Yıl Takvim Seçici (İşlem Geçmişi için) + Arama + Dışa Aktar */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* İşlem Geçmişi Aylık Filtre: Ay/Yıl Takvim Seçici */}
+            {isMonthlyReport && (
+              <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 gap-1 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={handlePrevMonth}
+                  title="Önceki Ay"
+                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 cursor-pointer"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <div className="flex items-center gap-1.5 px-1.5">
+                  <Calendar size={14} className="text-blue-600 shrink-0" />
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                    aria-label="Rapor Ay Seçimi"
+                    className="bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none cursor-pointer"
+                  >
+                    {MONTH_NAMES.map((name, idx) => (
+                      <option key={name} value={idx + 1}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    aria-label="Rapor Yıl Seçimi"
+                    className="bg-transparent text-xs sm:text-sm font-bold text-slate-800 focus:outline-none cursor-pointer"
+                  >
+                    {yearOptions.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleNextMonth}
+                  title="Sonraki Ay"
+                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 cursor-pointer"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
+
+            {/* Tablo İçi Arama */}
+            <div className="relative min-w-[200px]">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tabloda ara..."
+                className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              />
+            </div>
+
+            {/* Dışa Aktar (Excel / CSV) Butonları */}
             <button
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-outline-variant text-sm font-medium text-on-surface hover:bg-surface-container transition-colors"
+              type="button"
+              disabled={isExporting || filteredRows.length === 0}
+              onClick={() => handleExport("xlsx")}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
             >
-              <PrinterIcon size={15} />
-              Yazdır
+              <FileSpreadsheet size={15} />
+              Dışa Aktar (Excel)
             </button>
-          )}
+            <button
+              type="button"
+              disabled={isExporting || filteredRows.length === 0}
+              onClick={() => handleExport("csv")}
+              className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Download size={15} className="text-blue-600" />
+              CSV İndir
+            </button>
+          </div>
         </div>
 
-        {error && (
-          <p className="mt-3 text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">⚠ {error}</p>
+        {/* Rapor Tablosu Gövdesi */}
+        {isLoading ? (
+          <div className="text-center py-16 text-slate-400 text-sm">
+            Rapor tablosu hazırlanıyor...
+          </div>
+        ) : filteredRows.length === 0 ? (
+          <div className="text-center py-16 px-4 text-slate-400">
+            <BarChart3 size={38} className="mx-auto mb-2 opacity-30" />
+            <p className="text-sm font-semibold text-slate-600">
+              {isMonthlyReport
+                ? `${MONTH_NAMES[selectedMonth - 1]} ${selectedYear} döneminde kayıtlı işlem bulunamadı.`
+                : "Bu raporda görüntülenecek kayıt bulunamadı."}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
+                  {columns.map((col) => {
+                    const isCurrencyCol = col.includes("(₺)");
+                    return (
+                      <th
+                        key={col}
+                        className={`px-4 py-3.5 font-semibold whitespace-nowrap ${
+                          isCurrencyCol ? "text-right" : "text-left"
+                        }`}
+                      >
+                        {col}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredRows.map((row, idx) => (
+                  <tr
+                    key={idx}
+                    className="hover:bg-slate-50/80 transition-colors"
+                  >
+                    {columns.map((col) => {
+                      const isCurrencyCol = col.includes("(₺)");
+                      const rawVal = row[col];
+                      return (
+                        <td
+                          key={col}
+                          className={`px-4 py-3 text-xs sm:text-sm ${
+                            isCurrencyCol
+                              ? "text-right font-bold text-slate-900 whitespace-nowrap"
+                              : "text-slate-700"
+                          }`}
+                        >
+                          {formatCellValue(col, rawVal)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
-
-      {/* Z-Raporu Sonucu */}
-      {rapor && (
-        <div id="z-raporu-print" className="flex flex-col gap-4">
-          {/* Özet Kartlar */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard
-              icon={TrendingUp}
-              label="Toplam Satış"
-              value={formatCurrency(rapor.satis?.toplamSatis)}
-              sub={`${rapor.satis?.toplamAdet || 0} işlem`}
-              color="primary"
-            />
-            <StatCard
-              icon={Wallet}
-              label="Toplam Tahsilat"
-              value={formatCurrency(rapor.tahsilat?.toplamTahsilat)}
-              sub={`${rapor.tahsilat?.tahsilatAdet || 0} tahsilat`}
-              color="green"
-            />
-            <StatCard
-              icon={Package}
-              label="Stok Girişi"
-              value={`${rapor.stok?.giris || 0} adet`}
-              color="blue"
-            />
-            <StatCard
-              icon={Package}
-              label="Stok Çıkışı"
-              value={`${rapor.stok?.cikis || 0} adet`}
-              color="orange"
-            />
-          </div>
-
-          {/* İşlem Detayları */}
-          {rapor.detay?.islemler?.length > 0 && (
-            <div className="bg-surface rounded-2xl border border-outline-variant p-5">
-              <p className="text-sm font-semibold text-on-surface mb-3">
-                Satış İşlemleri ({rapor.detay.islemler.length})
-              </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-outline-variant">
-                      <th className="text-left py-2 px-3 text-xs font-semibold text-on-surface-variant">Tarih</th>
-                      <th className="text-left py-2 px-3 text-xs font-semibold text-on-surface-variant">Tür</th>
-                      <th className="text-right py-2 px-3 text-xs font-semibold text-on-surface-variant">Tutar</th>
-                      <th className="text-right py-2 px-3 text-xs font-semibold text-on-surface-variant">Peşinat</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rapor.detay.islemler.map((tx) => (
-                      <tr key={tx.id} className="border-b border-outline-variant/50 hover:bg-surface-container/50 transition-colors">
-                        <td className="py-2 px-3 text-on-surface-variant">{formatDate(tx.tarih)}</td>
-                        <td className="py-2 px-3">{tx.islemTuru || "Satış"}</td>
-                        <td className="py-2 px-3 text-right font-medium">{formatCurrency(tx.tutar)}</td>
-                        <td className="py-2 px-3 text-right text-on-surface-variant">{formatCurrency(tx.pesinat)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Tahsilat Detayları */}
-          {rapor.detay?.tahsilatlar?.length > 0 && (
-            <div className="bg-surface rounded-2xl border border-outline-variant p-5">
-              <p className="text-sm font-semibold text-on-surface mb-3">
-                Tahsilat Kayıtları ({rapor.detay.tahsilatlar.length})
-              </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-outline-variant">
-                      <th className="text-left py-2 px-3 text-xs font-semibold text-on-surface-variant">Tarih</th>
-                      <th className="text-left py-2 px-3 text-xs font-semibold text-on-surface-variant">Ödeme Yöntemi</th>
-                      <th className="text-right py-2 px-3 text-xs font-semibold text-on-surface-variant">Tutar</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rapor.detay.tahsilatlar.map((c) => (
-                      <tr key={c.id} className="border-b border-outline-variant/50 hover:bg-surface-container/50 transition-colors">
-                        <td className="py-2 px-3 text-on-surface-variant">{formatDate(c.tarih)}</td>
-                        <td className="py-2 px-3">{c.yontem || "Nakit"}</td>
-                        <td className="py-2 px-3 text-right font-medium text-green-600">{formatCurrency(c.tutar)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {!rapor.detay?.islemler?.length && !rapor.detay?.tahsilatlar?.length && (
-            <div className="bg-surface rounded-2xl border border-outline-variant p-8 text-center">
-              <BarChart3 size={32} className="text-on-surface-variant mx-auto mb-2" />
-              <p className="text-sm text-on-surface-variant">{rapor.tarih} tarihinde kayıt bulunamadı</p>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

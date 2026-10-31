@@ -14,14 +14,31 @@ export const getMonthlyReport = (month, userId) =>
 export const sendReminder = (payload) =>
   call(() => localDb.reports.sendReminder(payload));
 
+/** Sistem içi rapor tablosu için satır verilerini döner. */
+export const getReportTableData = (type, params = {}) =>
+  call(() => localDb.reports.exportRows(type, params));
+
 /**
- * Excel dışa aktarma. type: "products" | "customers" | "debtors" | "transactions" | "actionlogs"
- * Dönen değer indirilebilir bir Blob'dur (eski `/export/:type` blob yanıtıyla aynı).
+ * Excel veya CSV dışa aktarma.
+ * type: "products" | "customers" | "debtors" | "transactions" | "actionlogs"
+ * format: "xlsx" | "csv"
  */
-export const exportData = async (type) => {
-  const { rows, sheetName, fileName } = await localDb.reports.exportRows(type);
+export const exportData = async (type, params = {}, format = "xlsx") => {
+  const { rows, sheetName, fileName } = await localDb.reports.exportRows(type, params);
 
   const sheet = XLSX.utils.json_to_sheet(rows);
+
+  if (format === "csv") {
+    const csv = XLSX.utils.sheet_to_csv(sheet);
+    const csvFileName = (fileName || `${type}.xlsx`).replace(/\.xlsx$/i, ".csv");
+    return {
+      fileName: csvFileName,
+      blob: new Blob(["\uFEFF" + csv], {
+        type: "text/csv;charset=utf-8;",
+      }),
+    };
+  }
+
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
   const buffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });

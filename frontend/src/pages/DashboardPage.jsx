@@ -1,22 +1,35 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { getDashboardSummary } from "../services/dashboardService";
 import {
-  CurrencyDollarIcon,
-  ExclamationTriangleIcon,
-  TruckIcon,
-  ArchiveBoxIcon,
-  UserPlusIcon,
-  BanknotesIcon,
-  ArrowsRightLeftIcon,
-  ClockIcon
-} from "@heroicons/react/24/outline";
+  Wallet,
+  AlertCircle,
+  PackageCheck,
+  AlertTriangle,
+  Search,
+  UserCheck,
+  ArrowUpRight,
+  PlusCircle,
+  Filter,
+  Clock,
+} from "lucide-react";
 
-const formatCurrency = (amount) => {
-  return new Intl.NumberFormat("tr-TR", {
+const formatCurrency = (amount) =>
+  new Intl.NumberFormat("tr-TR", {
     style: "currency",
     currency: "TRY",
-  }).format(amount);
+    minimumFractionDigits: 2,
+  }).format(Number(amount || 0));
+
+const formatDateTime = (iso) => {
+  if (!iso) return "-";
+  return new Date(iso).toLocaleString("tr-TR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 };
 
 export default function DashboardPage({ onNewCustomerSale }) {
@@ -24,6 +37,11 @@ export default function DashboardPage({ onNewCustomerSale }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Son Hareketler tablosu filtreleri
+  const [typeFilter, setTypeFilter] = useState("all"); // "all" | "Satış" | "Tahsilat"
+  const [personelFilter, setPersonelFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     async function loadData() {
@@ -41,259 +59,416 @@ export default function DashboardPage({ onNewCustomerSale }) {
     loadData();
   }, []);
 
+  const {
+    gunlukKasa = 0,
+    toplamAcikAlacak = 0,
+    alacakliMusteriSayisi = 0,
+    emanetteBekleyenAdet = 0,
+    emanetteBekleyenKayitSayisi = 0,
+    kritikStokSayisi = 0,
+    magazaHareketleri = [],
+    personelListesi = [],
+  } = data || {};
+
+  const personelOptions = useMemo(() => {
+    const namesFromTx = magazaHareketleri
+      .map((item) => item.personelAdi)
+      .filter(Boolean);
+    const namesFromUsers = personelListesi
+      .map((u) => u.adSoyad)
+      .filter(Boolean);
+    return [...new Set([...namesFromUsers, ...namesFromTx])];
+  }, [magazaHareketleri, personelListesi]);
+
+  const filteredHareketler = useMemo(() => {
+    const q = searchQuery.toLocaleLowerCase("tr-TR").trim();
+    return magazaHareketleri.filter((item) => {
+      if (typeFilter !== "all" && item.islemTuru !== typeFilter) {
+        return false;
+      }
+      if (personelFilter !== "all" && item.personelAdi !== personelFilter) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        (item.musteriAdSoyad || "").toLocaleLowerCase("tr-TR").includes(q) ||
+        (item.personelAdi || "").toLocaleLowerCase("tr-TR").includes(q) ||
+        (item.detay || "").toLocaleLowerCase("tr-TR").includes(q) ||
+        String(item.musteriNo || "").includes(q)
+      );
+    });
+  }, [magazaHareketleri, typeFilter, personelFilter, searchQuery]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-slate-400 text-sm font-medium">
-        Yükleniyor...
+        Dashboard verileri yükleniyor...
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 text-red-600 p-4 rounded-lg text-center text-sm border border-red-100">
+      <div className="bg-red-50 text-red-600 p-4 rounded-xl text-center text-sm border border-red-100">
         {error}
       </div>
     );
   }
 
-  const {
-    gunlukKasa = 0,
-    vadesiGecenAlacak = 0,
-    bugunkuSevkiyatlar = { sayi: 0, liste: [] },
-    kritikStokSayisi = 0,
-    riskliTaksitler = [],
-    sonHareketler = [],
-  } = data || {};
-
   return (
-    <div className="space-y-8 max-w-7xl mx-auto px-2">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Genel Bakış</h1>
-        <div className="text-sm text-slate-500">{new Date().toLocaleDateString("tr-TR", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+    <div className="flex flex-col gap-6 max-w-[1600px] mx-auto w-full flex-1">
+      {/* Üst Başlık */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+            Mağaza Genel Bakış (Dashboard)
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            {new Date().toLocaleDateString("tr-TR", {
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => navigate("/musteri-finans")}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+          >
+            <Wallet size={16} />
+            Cari & Tahsilat
+          </button>
+          <button
+            type="button"
+            onClick={onNewCustomerSale}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 text-xs sm:text-sm font-semibold shadow-xs transition-colors cursor-pointer"
+          >
+            <PlusCircle size={16} />
+            Yeni Müşteri & Satış
+          </button>
+        </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-slate-500">Bugünün Kasası</p>
-            <CurrencyDollarIcon className="w-5 h-5 text-slate-400" />
+      {/* %20 Üst Alan: 4 Metrik Kartı */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {/* 1. Bugünün Kasası */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Bugünün Kasası
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Günlük Tahsilat / Peşinat Toplamı
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <Wallet size={20} />
+            </div>
           </div>
-          <div className="mt-4">
-            <p className="text-2xl font-semibold text-slate-900 tracking-tight">
+          <div className="mt-4 flex items-baseline justify-between">
+            <p className="text-2xl font-extrabold text-emerald-700 tracking-tight">
               {formatCurrency(gunlukKasa)}
             </p>
+            <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
+              Bugün
+            </span>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-slate-500">Geciken Alacak</p>
-            <ExclamationTriangleIcon className="w-5 h-5 text-slate-400" />
+        {/* 2. Toplam Açık Alacak */}
+        <div
+          onClick={() => navigate("/musteri-finans")}
+          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between cursor-pointer hover:border-red-300 transition-colors group"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Toplam Açık Alacak
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Tüm Müşterilerdeki Toplam Borç
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+              <AlertCircle size={20} />
+            </div>
           </div>
-          <div className="mt-4">
-            <p className="text-2xl font-semibold text-slate-900 tracking-tight">
-              {formatCurrency(vadesiGecenAlacak)}
+          <div className="mt-4 flex items-baseline justify-between">
+            <p className="text-2xl font-extrabold text-red-600 tracking-tight">
+              {formatCurrency(toplamAcikAlacak)}
             </p>
+            <span className="text-xs font-semibold text-slate-500 group-hover:text-red-600 flex items-center gap-0.5">
+              {alacakliMusteriSayisi} borçlu
+              <ArrowUpRight size={13} />
+            </span>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-slate-500">Bugünkü Sevkiyat</p>
-            <TruckIcon className="w-5 h-5 text-slate-400" />
+        {/* 3. Emanette Bekleyen Ürünler */}
+        <div
+          onClick={() => navigate("/envanter")}
+          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between cursor-pointer hover:border-blue-300 transition-colors group"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Emanette Bekleyen Ürünler
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Satışı yapılıp teslim bekleyen ürünler
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <PackageCheck size={20} />
+            </div>
           </div>
-          <div className="mt-4">
-            <p className="text-2xl font-semibold text-slate-900 tracking-tight">
-              {bugunkuSevkiyatlar.sayi}
+          <div className="mt-4 flex items-baseline justify-between">
+            <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
+              {emanetteBekleyenAdet}{" "}
+              <span className="text-sm font-semibold text-slate-500">adet</span>
             </p>
+            <span className="text-xs font-semibold text-slate-500 group-hover:text-blue-600 flex items-center gap-0.5">
+              {emanetteBekleyenKayitSayisi} teslimat
+              <ArrowUpRight size={13} />
+            </span>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-slate-500">Kritik Stok</p>
-            <ArchiveBoxIcon className="w-5 h-5 text-slate-400" />
+        {/* 4. Kritik Stoktaki Ürünler */}
+        <div
+          onClick={() => navigate("/urun-stok")}
+          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between cursor-pointer hover:border-amber-300 transition-colors group"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Kritik Stoktaki Ürünler
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Kritik seviye ve altındaki stoklar
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+              <AlertTriangle size={20} />
+            </div>
           </div>
-          <div className="mt-4">
-            <p className="text-2xl font-semibold text-slate-900 tracking-tight">
-              {kritikStokSayisi} <span className="text-sm font-normal text-slate-500">ürün</span>
+          <div className="mt-4 flex items-baseline justify-between">
+            <p className="text-2xl font-extrabold text-amber-600 tracking-tight">
+              {kritikStokSayisi}{" "}
+              <span className="text-sm font-semibold text-slate-500">ürün</span>
             </p>
+            <span className="text-xs font-semibold text-slate-500 group-hover:text-amber-600 flex items-center gap-0.5">
+              Stok Yönetimi
+              <ArrowUpRight size={13} />
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Quick Actions (Hızlı İşlemler) */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-wrap gap-4 items-center justify-start">
-        <span className="text-sm font-semibold text-slate-700 mr-2">Hızlı İşlemler:</span>
-        <button
-          onClick={onNewCustomerSale}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-        >
-          <UserPlusIcon className="w-4 h-4" /> Yeni Müşteri & Satış
-        </button>
-        <button
-          onClick={() => navigate('/musteri-finans')}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-        >
-          <BanknotesIcon className="w-4 h-4" /> Hızlı Tahsilat
-        </button>
-        <button
-          onClick={() => navigate('/transferler')}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-        >
-          <ArrowsRightLeftIcon className="w-4 h-4" /> Yeni Transfer
-        </button>
-      </div>
-
-      {/* Layout Columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Bugünkü Sevkiyat Planı */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-slate-900">
-              Bugünün Sevkiyat Planı
-            </h2>
-            <span className="text-xs font-medium bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full">
-              {bugunkuSevkiyatlar.liste.length} Kayıt
-            </span>
-          </div>
-          <div className="p-0 flex-grow overflow-auto" style={{ maxHeight: '400px' }}>
-            {bugunkuSevkiyatlar.liste.length > 0 ? (
-              <ul className="divide-y divide-slate-100">
-                {bugunkuSevkiyatlar.liste.map((sevkiyat) => (
-                  <li
-                    key={sevkiyat._id}
-                    className="p-5 hover:bg-slate-50 transition-colors"
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="font-medium text-slate-900 text-sm">
-                        {sevkiyat.customerId?.ad} {sevkiyat.customerId?.soyad}
-                      </span>
-                      <span className="text-xs px-2 py-1 rounded bg-slate-100 text-slate-600 font-medium">
-                        {sevkiyat.status}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-500 mb-3 space-y-1">
-                      <div>Tel: {sevkiyat.customerId?.telefon || "-"}</div>
-                      <div className="truncate">Adres: {sevkiyat.customerId?.adres || "-"}</div>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
-                        Ürünler
-                      </p>
-                      <ul className="text-sm text-slate-700 space-y-1.5">
-                        {sevkiyat.products?.map((p, i) => (
-                          <li key={i} className="flex items-center">
-                            <span className="w-1 h-1 bg-slate-300 rounded-full mr-2.5"></span>
-                            {p.urunAdi} <span className="text-slate-400 ml-1">(x{p.adet})</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full py-12 text-slate-400">
-                <TruckIcon className="w-8 h-8 mb-3 opacity-50 stroke-1" />
-                <p className="text-sm">Bugün için planlanmış sevkiyat bulunmuyor.</p>
+      {/* %80 Alt Alan: Dev "Mağaza Hareketleri / Son İşlemler" Tablosu */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs flex flex-col flex-1 min-h-[520px] overflow-hidden">
+        {/* Tablo Üst Başlık ve Filtre Kontrol Çubuğu */}
+        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/60 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-600/10 text-blue-600 flex items-center justify-center shrink-0">
+              <Clock size={19} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                  Mağaza Hareketleri / Son İşlemler
+                </h2>
+                <span className="text-xs font-semibold bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full">
+                  {filteredHareketler.length} İşlem
+                </span>
               </div>
+              <p className="text-xs text-slate-500">
+                En yeniden eskiye doğru mağazada gerçekleşen tüm satış ve tahsilat hareketleri
+              </p>
+            </div>
+          </div>
+
+          {/* Hızlı Filtre Çubuğu: Satışlar, Tahsilatlar, Personele Göre, Arama */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* İşlem Türü Hızlı Filtre Butonları */}
+            <div className="inline-flex items-center bg-white border border-slate-200 rounded-xl p-1 gap-1">
+              {[
+                { id: "all", label: "Tüm İşlemler" },
+                { id: "Satış", label: "Satışlar" },
+                { id: "Tahsilat", label: "Tahsilatlar" },
+              ].map((tab) => {
+                const active = typeFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setTypeFilter(tab.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      active
+                        ? "bg-blue-600 text-white shadow-2xs"
+                        : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Personele Göre Filtre */}
+            <div className="relative">
+              <UserCheck
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              />
+              <select
+                value={personelFilter}
+                onChange={(e) => setPersonelFilter(e.target.value)}
+                aria-label="Personele Göre Filtrele"
+                className="pl-8 pr-7 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+              >
+                <option value="all">Tüm Personeller</option>
+                {personelOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Arama Çubuğu */}
+            <div className="relative min-w-[210px] flex-1 sm:flex-initial">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Müşteri, ürün kodu veya personel..."
+                className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              />
+            </div>
+
+            {(typeFilter !== "all" || personelFilter !== "all" || searchQuery) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTypeFilter("all");
+                  setPersonelFilter("all");
+                  setSearchQuery("");
+                }}
+                className="px-2.5 py-2 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 cursor-pointer"
+              >
+                Filtreyi Temizle
+              </button>
             )}
           </div>
         </div>
 
-        {/* Right Column: Kritik Bekleyen Tahsilatlar */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-slate-900">
-              Kritik Bekleyen Tahsilatlar
-            </h2>
-            <span className="text-xs font-medium bg-red-50 text-red-600 px-2.5 py-0.5 rounded-full">
-              {riskliTaksitler.length} Risk
-            </span>
-          </div>
-          <div className="p-0 flex-grow overflow-auto" style={{ maxHeight: '400px' }}>
-            {riskliTaksitler.length > 0 ? (
-              <ul className="divide-y divide-slate-100">
-                {riskliTaksitler.map((taksit) => (
-                  <li
-                    key={taksit._id}
-                    className="p-5 hover:bg-slate-50 transition-colors"
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="font-medium text-slate-900 text-sm">
-                        {taksit.customerId?.ad} {taksit.customerId?.soyad}
-                      </span>
-                      <span className="font-semibold text-slate-900 text-sm">
-                        {formatCurrency(taksit.amount)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-slate-500">
-                        Tel: {taksit.customerId?.telefon || "-"}
-                      </span>
-                      <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded">
-                        Vade: {new Date(taksit.dueDate).toLocaleDateString("tr-TR")}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-400 mt-2 flex items-center">
-                       <span className="w-1 h-1 bg-slate-300 rounded-full mr-2"></span>
-                       Taksit No: {taksit.installmentNumber}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full py-12 text-slate-400">
-                <ExclamationTriangleIcon className="w-8 h-8 mb-3 opacity-50 stroke-1" />
-                <p className="text-sm">Vadesi geçmiş riskli taksit bulunmuyor.</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Third Column: Son Hareketler */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-slate-900">
-              Son Hareketler
-            </h2>
-            <span className="text-xs font-medium bg-indigo-50 text-indigo-600 px-2.5 py-0.5 rounded-full">
-              {sonHareketler.length} İşlem
-            </span>
-          </div>
-          <div className="p-0 flex-grow overflow-auto" style={{ maxHeight: '400px' }}>
-            {sonHareketler.length > 0 ? (
-              <ul className="divide-y divide-slate-100">
-                {sonHareketler.map((islem) => (
-                  <li
-                    key={islem._id}
-                    className="p-5 hover:bg-slate-50 transition-colors"
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="font-medium text-slate-900 text-sm">
-                        {islem.action.replace(/_/g, " ")}
-                      </span>
-                      <span className="text-xs text-slate-400 flex items-center gap-1">
-                        <ClockIcon className="w-3 h-3" />
-                        {new Date(islem.createdAt).toLocaleTimeString("tr-TR", { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      Kullanıcı: <span className="font-medium text-slate-700">{islem.userName}</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full py-12 text-slate-400">
-                <ClockIcon className="w-8 h-8 mb-3 opacity-50 stroke-1" />
-                <p className="text-sm">Henüz bir işlem kaydedilmemiş.</p>
-              </div>
-            )}
-          </div>
+        {/* Tablo Gövdesi */}
+        <div className="overflow-x-auto flex-1">
+          {filteredHareketler.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+              <Filter size={36} className="mb-2 opacity-30" />
+              <p className="text-sm font-medium text-slate-600">
+                Seçili filtrelere uygun mağaza hareketi bulunamadı.
+              </p>
+            </div>
+          ) : (
+            <table className="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
+                  <th className="px-5 py-3.5 font-semibold whitespace-nowrap">
+                    Tarih & Saat
+                  </th>
+                  <th className="px-4 py-3.5 font-semibold whitespace-nowrap">
+                    İşlemi Yapan Personel
+                  </th>
+                  <th className="px-4 py-3.5 font-semibold whitespace-nowrap">
+                    Müşteri Adı Soyadı
+                  </th>
+                  <th className="px-4 py-3.5 font-semibold whitespace-nowrap">
+                    İşlem Türü
+                  </th>
+                  <th className="px-4 py-3.5 font-semibold">
+                    Detay / Ürün Kodu
+                  </th>
+                  <th className="px-5 py-3.5 font-semibold text-right whitespace-nowrap">
+                    İşlem Tutarı
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredHareketler.map((item) => {
+                  const isSale = item.islemTuru === "Satış";
+                  return (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-slate-50/80 transition-colors"
+                    >
+                      <td className="px-5 py-3.5 text-xs font-medium text-slate-600 whitespace-nowrap">
+                        {formatDateTime(item.tarih)}
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg">
+                          <UserCheck size={13} className="text-blue-600" />
+                          {item.personelAdi}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <div className="font-bold text-slate-900 text-sm">
+                          {item.musteriAdSoyad}
+                        </div>
+                        {item.musteriNo ? (
+                          <div className="text-[11px] text-slate-400">
+                            Müşteri No: #{item.musteriNo}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        {isSale ? (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                            Satış • {item.odemeYontemi}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Tahsilat • {item.odemeYontemi}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-700 text-xs sm:text-sm max-w-md">
+                        {item.detay}
+                      </td>
+                      <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                        <div className="flex flex-col items-end">
+                          <span
+                            className={`text-sm font-extrabold ${
+                              isSale ? "text-slate-900" : "text-emerald-600"
+                            }`}
+                          >
+                            {isSale ? "" : "+"}
+                            {formatCurrency(item.tutar)}
+                          </span>
+                          {isSale && item.pesinat > 0 && (
+                            <span className="text-[11px] text-emerald-600 font-medium">
+                              Peşinat: {formatCurrency(item.pesinat)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

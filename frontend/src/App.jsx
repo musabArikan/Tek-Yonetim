@@ -848,7 +848,10 @@ function App() {
               onSessionRefresh={refreshAuthSession}
             />
           ) : activePage === "musteri-finans" ? (
-            <CustomerFinancePage initialCustomerId={financeTargetId} />
+            <CustomerFinancePage
+              initialCustomerId={financeTargetId}
+              onDataRefresh={refreshDashboardData}
+            />
           ) : activePage === "raporlar" ? (
             <ZRaporuPage />
           ) : null}

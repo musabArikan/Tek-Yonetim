@@ -2630,18 +2630,72 @@ const dashboard = {
       const pendingLines = liveTx.flatMap((t) =>
         (t.urunler || []).map((line) => pendingQuantity(line)).filter((qty) => qty > 0),
       );
+      const emanetteBekleyenAdet = pendingLines.reduce((sum, qty) => sum + qty, 0);
 
       const sonHareketler = db.actionLogs
         .filter((l) => inTenant(l))
         .sort(byDateDesc("createdAt"))
         .slice(0, 5);
 
+      const magazaHareketleri = [...liveTx]
+        .sort(byDateDesc("tarih"))
+        .map((t) => {
+          const isSale = t.islemTuru === "Satış";
+          const cust = db.customers.find((c) => sameId(c._id, t.musteriId));
+          const actorUser = db.users.find((u) => sameId(u._id, t.createdBy));
+          const personelAdi =
+            t.personelAdi || (actorUser ? fullName(actorUser) : "Mağaza Yetkilisi");
+          const musteriAdSoyad =
+            t.musteriAdSoyad || (cust ? fullName(cust) : "Müşteri");
+          const urunDetay = (t.urunler || [])
+            .map((l) =>
+              l.urunAdi && l.urunAdi !== l.urunKodu
+                ? `${l.urunKodu} — ${l.urunAdi} (x${l.adet})`
+                : `${l.urunKodu} (x${l.adet})`,
+            )
+            .join(", ");
+
+          return {
+            id: t._id || t.id,
+            tarih: t.tarih || t.createdAt,
+            personelId: t.createdBy || "",
+            personelAdi,
+            musteriId: cust?._id || t.musteriId,
+            musteriAdSoyad,
+            musteriNo: t.musteriNo || cust?.musteriNo || "",
+            islemTuru: t.islemTuru || "Satış",
+            odemeYontemi: t.odemeYontemi || (isSale ? "Veresiye" : "Nakit"),
+            urunler: t.urunler || [],
+            detay: isSale
+              ? urunDetay || t.urunBilgisi || "Ürün Satışı"
+              : t.aciklama || `${t.odemeYontemi || "Nakit"} ile cari borç tahsilatı`,
+            tutar: isSale
+              ? num(t.toplamTutar, 0)
+              : num(t.odenenTutar ?? t.tutar ?? t.toplamTutar ?? t.pesinat ?? 0),
+            pesinat: num(t.pesinat, 0),
+            kalanBorc: num(t.kalanHesap ?? t.kalanBorc ?? 0),
+          };
+        });
+
+      const personelListesi = active(db.users).map((u) => ({
+        id: u._id,
+        adSoyad: fullName(u),
+        role: u.role,
+      }));
+
       return {
-        // DashboardPage
+        // DashboardPage (Yeni 4 Özet Kartı + Dev Mağaza Hareketleri Tablosu)
         gunlukKasa,
+        toplamAcikAlacak: toplamAlacak,
+        alacakliMusteriSayisi: debtors.length,
+        emanetteBekleyenAdet,
+        emanetteBekleyenKayitSayisi: pendingLines.length,
+        kritikStokSayisi: criticalProducts.length,
+        magazaHareketleri,
+        personelListesi,
+        // Eski alanlar (geriye dönük uyumluluk)
         vadesiGecenAlacak,
         bugunkuSevkiyatlar: { sayi: todaysShipments.length, liste: todaysShipments },
-        kritikStokSayisi: criticalProducts.length,
         riskliTaksitler,
         sonHareketler,
         // SummaryCards
@@ -2656,7 +2710,7 @@ const dashboard = {
         },
         bekleyenEnvanter: {
           bekleyenTeslimatSayisi: pendingLines.length,
-          bekleyenToplamAdet: pendingLines.reduce((sum, qty) => sum + qty, 0),
+          bekleyenToplamAdet: emanetteBekleyenAdet,
         },
       };
     }),
@@ -2788,100 +2842,103 @@ const reports = {
       };
     }),
 
-  /** Excel dışa aktarma için satır verisi döner. */
-  exportRows: (type) =>
+  /** Rapor tablosu ve Excel/CSV dışa aktarma için satır verisi döner. */
+  exportRows: (type, params = {}) =>
     run((db) => {
       const dateText = (iso) => (iso ? new Date(iso).toLocaleDateString("tr-TR") : "");
       const dateTimeText = (iso) => (iso ? new Date(iso).toLocaleString("tr-TR") : "");
 
+      const hasMonthFilter = Boolean(params.year && params.month);
+      const monthRange = hasMonthFilter
+        ? [
+            new Date(Number(params.year), Number(params.month) - 1, 1, 0, 0, 0, 0).getTime(),
+            new Date(Number(params.year), Number(params.month), 0, 23, 59, 59, 999).getTime(),
+          ]
+        : null;
+
       switch (type) {
         case "products":
           return {
-            sheetName: "Ürünler",
-            fileName: "urunler.xlsx",
+            sheetName: "Ürün Listesi",
+            fileName: "urun-listesi.xlsx",
             rows: active(db.products).map((p) => ({
               "Ürün Kodu": p.urunKodu || "",
               "Ürün Adı": p.ad,
-              Marka: p.marka || "",
-              Kategori: p.kategori || "",
-              Barkod: p.barkod || "",
-              "Seri No": p.seriNo || "",
+              Marka: p.marka || "-",
+              Kategori: p.kategori || "-",
+              Barkod: p.barkod || "-",
               "Alış Fiyatı (₺)": p.alisFiyati || 0,
               "Satış Fiyatı (₺)": p.satisFiyati || 0,
               "Mevcut Stok": p.mevcutStok || 0,
-              "Kritik Stok Seviyesi": p.kritikStokSeviyesi ?? 5,
-              "Garanti Süresi (Ay)": p.garantiSuresi || 0,
-              Tedarikçi: p.tedarikci || "",
-              "Oluşturma Tarihi": dateText(p.createdAt),
+              "Kritik Stok": p.kritikStokSeviyesi ?? 5,
+              "Kayıt Tarihi": dateText(p.createdAt),
             })),
           };
         case "customers":
           return {
-            sheetName: "Müşteriler",
-            fileName: "musteriler.xlsx",
+            sheetName: "Müşteri Listesi",
+            fileName: "musteri-listesi.xlsx",
             rows: active(db.customers).map((c) => ({
               "Müşteri No": c.musteriNo || "",
-              Ad: c.ad,
-              Soyad: c.soyad,
-              "TC Kimlik": c.tcKimlik || "",
-              Telefon: c.telefon || "",
-              Adres: c.adres || "",
-              "Kalan Bakiye (₺)": c.toplamKalanBakiye || 0,
+              "Ad Soyad": `${c.ad || ""} ${c.soyad || ""}`.trim(),
+              "TC Kimlik": c.tcKimlik || c.tc || "-",
+              Telefon: c.telefon || "-",
+              "İletişim Adresi": c.adres || "-",
+              "Kalan Borç (₺)": c.toplamKalanBakiye || 0,
               "Kayıt Tarihi": dateText(c.createdAt),
             })),
           };
         case "debtors":
           return {
-            sheetName: "Borçlular",
-            fileName: "borclular.xlsx",
+            sheetName: "Borçlular Listesi",
+            fileName: "borclular-listesi.xlsx",
             rows: active(db.customers)
               .filter((c) => num(c.toplamKalanBakiye) > 0)
               .sort((a, b) => num(b.toplamKalanBakiye) - num(a.toplamKalanBakiye))
               .map((c) => ({
                 "Müşteri No": c.musteriNo || "",
-                Ad: c.ad,
-                Soyad: c.soyad,
-                "TC Kimlik": c.tcKimlik || "",
-                Telefon: c.telefon || "",
-                "Borç (₺)": c.toplamKalanBakiye || 0,
-                "Kayıt Tarihi": dateText(c.createdAt),
+                "Ad Soyad": `${c.ad || ""} ${c.soyad || ""}`.trim(),
+                "TC Kimlik": c.tcKimlik || c.tc || "-",
+                Telefon: c.telefon || "-",
+                "İletişim Adresi": c.adres || "-",
+                "Toplam Kalan Borç (₺)": c.toplamKalanBakiye || 0,
+                "Son İşlem Tarihi": dateText(c.sonIslemTarihi || c.createdAt),
               })),
           };
         case "transactions":
-          return {
-            sheetName: "İşlemler",
-            fileName: "islemler.xlsx",
-            rows: active(db.transactions)
-              .sort(byDateDesc("tarih"))
-              .map((t) => ({
-                Tarih: dateTimeText(t.tarih),
-                Personel: t.personelAdi || "",
-                "Müşteri No": t.musteriNo || "",
-                Müşteri: t.musteriAdSoyad || "",
-                "İşlem Türü": t.islemTuru,
-                Ürünler: lineSummary(t),
-                "Toplam Tutar (₺)": t.toplamTutar || 0,
-                "Alınan Tutar (₺)": t.alinanTutar ?? t.pesinat ?? 0,
-                "Kalan Borç (₺)": t.kalanBorc ?? t.kalanHesap ?? 0,
-                "Ödeme Yöntemi": t.odemeYontemi || "",
-              })),
-          };
-        case "actionlogs":
+        case "actionlogs": {
+          const suffix = hasMonthFilter
+            ? `-${params.year}-${pad2(params.month)}`
+            : "";
+          const filteredTx = active(db.transactions)
+            .filter((t) => !monthRange || inRange(t.tarih || t.createdAt, monthRange))
+            .sort(byDateDesc("tarih"));
+
           return {
             sheetName: "İşlem Geçmişi",
-            fileName: "islem-gecmisi.xlsx",
-            rows: db.actionLogs
-              .filter((l) => inTenant(l))
-              .sort(byDateDesc("createdAt"))
-              .map((l) => ({
-                Tarih: dateTimeText(l.createdAt),
-                Kullanıcı: l.userName || "Bilinmiyor",
-                İşlem: l.action,
-                "Kayıt Türü": l.entityType || "",
-                "Kayıt ID": l.entityId || "",
-                Detay: JSON.stringify(l.details || {}),
-              })),
+            fileName: `islem-gecmisi${suffix}.xlsx`,
+            rows: filteredTx.map((t) => {
+              const isSale = t.islemTuru === "Satış";
+              const detailText = isSale
+                ? lineSummary(t) || t.urunBilgisi || "Ürün Satışı"
+                : t.aciklama || "Cari Tahsilat";
+              return {
+                "Tarih & Saat": dateTimeText(t.tarih || t.createdAt),
+                Personel: t.personelAdi || "Mağaza Yetkilisi",
+                "Müşteri No": t.musteriNo || "-",
+                Müşteri: t.musteriAdSoyad || "-",
+                "İşlem Türü": t.islemTuru || "Satış",
+                "Detay / Ürün Kodu": detailText,
+                "Ödeme Yöntemi": t.odemeYontemi || "-",
+                "İşlem Tutarı (₺)": isSale
+                  ? num(t.toplamTutar, 0)
+                  : num(t.odenenTutar ?? t.tutar ?? t.toplamTutar ?? 0),
+                "Peşinat / Ödenen (₺)": num(t.alinanTutar ?? t.pesinat ?? 0),
+                "Kalan Borç (₺)": num(t.kalanBorc ?? t.kalanHesap ?? 0),
+              };
+            }),
           };
+        }
         default:
           throw createHttpError("Geçersiz dışa aktarma türü", 400);
       }

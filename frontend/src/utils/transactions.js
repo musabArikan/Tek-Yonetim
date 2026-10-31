@@ -15,12 +15,18 @@ export function computeRunningBalances(transactions) {
       balance = Math.max(0, balance - Number(collectionAmount || 0));
     }
 
+    const runningAfter =
+      tx.musteriBakiyeSonrasi !== undefined && tx.musteriBakiyeSonrasi !== null
+        ? Number(tx.musteriBakiyeSonrasi)
+        : balance;
+
     return {
       ...tx,
       kalan:
         tx.kalanHesap === undefined || tx.kalanHesap === null
           ? balance
           : Number(tx.kalanHesap),
+      islemSonrasiBakiye: runningAfter,
     };
   });
 

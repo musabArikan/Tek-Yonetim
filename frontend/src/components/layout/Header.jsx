@@ -8,7 +8,7 @@ const navItems = [
   { id: "musteriler", label: "Müşteriler" },
   { id: "urun-stok", label: "Ürün & Stok" },
   { id: "envanter", label: "Emanetler" },
-  { id: "musteri-finans", label: "Finans & Senetler" },
+  { id: "musteri-finans", label: "Cari & Finans" },
   { id: "raporlar", label: "Raporlar" },
   { id: "personeller", label: "Personeller" },
 ];
@@ -58,33 +58,35 @@ export default function Header({
 
   return (
     <>
-      <header className="bg-primary-container border-b border-outline-variant fixed top-0 left-0 w-full z-50 flex justify-between items-center px-4 md:px-6 h-16 gap-3">
-        <div className="flex items-center gap-3 md:gap-5 min-w-0">
-          <div className="flex flex-col min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <Store size={18} className="text-white/90 shrink-0 hidden sm:block" />
+      <header className="bg-primary-container border-b border-outline-variant fixed top-0 left-0 w-full z-50 flex justify-between items-center px-3 lg:px-4 2xl:px-6 h-16 gap-2">
+        <div className="flex items-center gap-2 lg:gap-3 2xl:gap-4 min-w-0 flex-1">
+          <div className="flex flex-col min-w-0 shrink-0 max-w-[175px] sm:max-w-[210px] lg:max-w-[165px] 2xl:max-w-[235px]">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Store size={16} className="text-white/90 shrink-0 hidden sm:block" />
               <span
-                className="text-base md:text-lg font-bold text-white whitespace-nowrap truncate max-w-[200px] sm:max-w-[260px] lg:max-w-[320px]"
+                className="text-sm 2xl:text-base font-bold text-white whitespace-nowrap truncate"
                 style={{ fontFamily: "var(--font-headline)" }}
                 title={displayStoreName}
               >
                 {displayStoreName}
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-[11px] font-medium text-white/80 truncate">
-              <UserCheck size={12} className="shrink-0 text-white/70" />
+            <div className="flex items-center gap-1 text-[10px] 2xl:text-[11px] font-medium text-white/80 truncate">
+              <UserCheck size={11} className="shrink-0 text-white/70" />
               <span className="truncate" title={`Yetkili: ${displayOwnerName}`}>
                 Yetkili: <strong className="text-white">{displayOwnerName}</strong>
               </span>
               {displayRole ? (
-                <span className="uppercase tracking-wider text-[10px] bg-white/15 px-1.5 py-0.2 rounded text-white/90 shrink-0">
+                <span className="uppercase tracking-wider text-[9px] bg-white/15 px-1 py-0.2 rounded text-white/90 shrink-0">
                   {displayRole}
                 </span>
               ) : null}
             </div>
           </div>
 
-          <nav className="hidden xl:flex items-center gap-1">
+          <div className="hidden lg:block h-7 w-px bg-white/15 shrink-0" />
+
+          <nav className="hidden lg:flex items-center gap-0.5 2xl:gap-1 min-w-0 overflow-x-auto no-scrollbar">
             {navItems
               .filter(({ id }) => availablePages.includes(id))
               .map(({ id, label }) => {
@@ -93,10 +95,10 @@ export default function Header({
                   <button
                     key={id}
                     onClick={() => handlePageChange(id)}
-                    className={`px-3 py-2 rounded-lg text-xs lg:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                    className={`px-2 xl:px-2.5 2xl:px-3 py-1.5 rounded-lg text-[11px] xl:text-xs 2xl:text-[13px] font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                       isActive
-                        ? "bg-white/20 text-white"
-                        : "text-white/70 hover:bg-white/10 hover:text-white"
+                        ? "bg-white/20 text-white shadow-2xs"
+                        : "text-white/75 hover:bg-white/10 hover:text-white"
                     }`}
                   >
                     {label}
@@ -106,37 +108,39 @@ export default function Header({
           </nav>
         </div>
 
-        <div className="hidden xl:flex items-center gap-2.5 shrink-0">
+        <div className="hidden lg:flex items-center gap-1.5 2xl:gap-2 shrink-0">
           {canCreateSale ? (
             <>
               <button
                 onClick={onExistingSale}
-                className="text-xs lg:text-sm font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors rounded-lg px-4 py-2 flex items-center gap-1.5 active:scale-95 cursor-pointer whitespace-nowrap"
+                title="Mevcut Müşteriye Satış"
+                className="text-[11px] xl:text-xs font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors rounded-lg px-2.5 2xl:px-3.5 py-1.5 flex items-center gap-1.5 active:scale-95 cursor-pointer whitespace-nowrap"
               >
-                <Tag size={16} />
-                Mevcut Müşteriye Satış
+                <Tag size={14} className="shrink-0" />
+                <span>Mevcut Müşteriye Satış</span>
               </button>
               <button
                 onClick={onNewCustomerSale}
-                className="text-xs lg:text-sm font-semibold bg-white/20 text-white hover:bg-white/30 transition-opacity rounded-lg px-4 py-2 flex items-center gap-1.5 active:scale-95 cursor-pointer whitespace-nowrap"
+                title="Yeni Müşteri & Satış"
+                className="text-[11px] xl:text-xs font-semibold bg-white/20 text-white hover:bg-white/30 transition-opacity rounded-lg px-2.5 2xl:px-3.5 py-1.5 flex items-center gap-1.5 active:scale-95 cursor-pointer whitespace-nowrap"
               >
-                <PlusCircle size={16} />
-                Yeni Müşteri & Satış
+                <PlusCircle size={14} className="shrink-0" />
+                <span>Yeni Müşteri & Satış</span>
               </button>
             </>
           ) : null}
           <button
             onClick={onLogout}
             title={displayUserName ? `${displayUserName} oturumunu kapat` : "Çıkış Yap"}
-            className="text-sm font-semibold bg-red-600/90 text-white hover:bg-red-700 transition-colors rounded-lg px-3.5 py-2 flex items-center gap-1.5 active:scale-95 cursor-pointer"
+            className="text-xs font-semibold bg-red-600/90 text-white hover:bg-red-700 transition-colors rounded-lg px-2.5 py-1.5 flex items-center gap-1 active:scale-95 cursor-pointer shrink-0"
           >
-            <LogOut size={17} />
+            <LogOut size={15} />
           </button>
         </div>
 
         <button
           onClick={() => setMobileMenuOpen((prev) => !prev)}
-          className="xl:hidden p-2 text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+          className="lg:hidden p-2 text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer shrink-0"
           aria-label={mobileMenuOpen ? "Menüyü kapat" : "Menüyü aç"}
         >
           {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -146,10 +150,10 @@ export default function Header({
       {mobileMenuOpen && (
         <>
           <div
-            className="fixed inset-0 bg-on-surface/40 z-40 xl:hidden"
+            className="fixed inset-0 bg-on-surface/40 z-40 lg:hidden"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <div className="fixed top-16 left-0 right-0 bg-primary-container border-b border-white/20 z-40 xl:hidden shadow-lg">
+          <div className="fixed top-16 left-0 right-0 bg-primary-container border-b border-white/20 z-40 lg:hidden shadow-lg max-h-[calc(100vh-4rem)] overflow-y-auto">
             <div className="flex flex-col px-4 pt-3 pb-2 border-b border-white/15">
               <span className="text-sm font-bold text-white truncate">
                 {displayStoreName}
@@ -170,7 +174,7 @@ export default function Header({
                     <button
                       key={id}
                       onClick={() => handlePageChange(id)}
-                      className={`w-full text-left px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                      className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
                         isActive
                           ? "bg-white/20 text-white"
                           : "text-white/70 hover:bg-white/10 hover:text-white"
@@ -186,25 +190,26 @@ export default function Header({
                 <>
                   <button
                     onClick={handleExistingSale}
-                    className="w-full text-sm font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors rounded-lg px-4 py-3 flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full text-sm font-semibold border border-white/40 text-white hover:bg-white/10 transition-colors rounded-lg px-4 py-2.5 flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <Tag size={18} />
+                    <Tag size={17} />
                     Mevcut Müşteriye Satış
                   </button>
                   <button
                     onClick={handleNewCustomerSale}
-                    className="w-full text-sm font-semibold bg-white/20 text-white hover:bg-white/30 transition-opacity rounded-lg px-4 py-3 flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full text-sm font-semibold bg-white/20 text-white hover:bg-white/30 transition-opacity rounded-lg px-4 py-2.5 flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <PlusCircle size={18} />
+                    <PlusCircle size={17} />
                     Yeni Müşteri & Satış
                   </button>
                 </>
               ) : null}
               <button
                 onClick={onLogout}
-                className="w-full text-sm font-semibold bg-red-600/90 text-white hover:bg-red-700 transition-colors rounded-lg px-4 py-3 flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full text-sm font-semibold bg-red-600/90 text-white hover:bg-red-700 transition-colors rounded-lg px-4 py-2.5 flex items-center justify-center gap-2 cursor-pointer"
               >
-                <LogOut size={18} />
+                <LogOut size={17} />
+                Çıkış Yap
               </button>
             </div>
           </div>

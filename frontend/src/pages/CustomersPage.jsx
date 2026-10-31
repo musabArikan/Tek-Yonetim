@@ -1,6 +1,6 @@
 import React from "react";
 import { Search, PlusCircle, ArrowRight } from "lucide-react";
-import { getFullName } from "../utils/formatters";
+import { getFullName, formatCurrency } from "../utils/formatters";
 
 export default function CustomersPage({
   customers,
@@ -10,15 +10,17 @@ export default function CustomersPage({
   onNewCustomerSale,
 }) {
   return (
-    <div className="max-w-7xl mx-auto px-2 space-y-6">
+    <div className="max-w-7xl mx-auto px-2 space-y-6 w-full">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">Müşteriler</h1>
-          <p className="text-sm text-slate-500 mt-1">Müşteri veritabanı, finans ve hesap yönetimi</p>
+          <p className="text-sm text-slate-500 mt-1">
+            Müşteri veritabanı ve cari hesap yönetimi
+          </p>
         </div>
         <button
           onClick={onNewCustomerSale}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors cursor-pointer"
         >
           <PlusCircle size={18} />
           Yeni Müşteri & Satış
@@ -50,53 +52,62 @@ export default function CustomersPage({
                 <th className="px-6 py-4">Ad Soyad</th>
                 <th className="px-6 py-4">TC Kimlik</th>
                 <th className="px-6 py-4">Telefon</th>
+                <th className="px-6 py-4 text-right">Kalan Borç</th>
                 <th className="px-6 py-4 text-right">İşlem</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
               {customers.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-12 text-center text-sm text-slate-500">
+                  <td colSpan="6" className="px-6 py-12 text-center text-sm text-slate-500">
                     Arama kriterlerine uygun müşteri bulunamadı.
                   </td>
                 </tr>
               ) : (
-                customers.map((customer) => (
-                  <tr
-                    key={customer.id}
-                    className="hover:bg-slate-50 transition-colors group cursor-pointer"
-                    onClick={() => onSelectCustomer(customer.id)}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-700/10">
-                        {customer.musteriNo || "-"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-slate-900">
-                        {getFullName(customer)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                      {customer.tc || "-"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                      {customer.telefon || "-"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        className="inline-flex items-center justify-center text-blue-600 hover:text-blue-800 transition-colors gap-1 group-hover:underline"
-                        onClick={(e) => {
-                          e.stopPropagation(); // Satır tıklamasını engelleme, butona basıldığında da aynı yere gider ama click propagations'ı ayırabiliriz.
-                          onSelectCustomer(customer.id);
-                        }}
-                      >
-                        Müşteri Detayı
-                        <ArrowRight size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                customers.map((customer) => {
+                  const debt = Number(customer.toplamKalanBakiye ?? customer.kalanBorc ?? 0);
+                  return (
+                    <tr
+                      key={customer.id}
+                      className="hover:bg-slate-50 transition-colors group cursor-pointer"
+                      onClick={() => onSelectCustomer(customer.id)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                          {customer.musteriNo || "-"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-slate-900">
+                          {getFullName(customer)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                        {customer.tc || "-"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                        {customer.telefon || "-"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold">
+                        <span className={debt > 0 ? "text-red-600" : "text-slate-400"}>
+                          {formatCurrency(debt)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button
+                          className="inline-flex items-center justify-center text-blue-600 hover:text-blue-800 transition-colors gap-1 group-hover:underline cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectCustomer(customer.id);
+                          }}
+                        >
+                          Müşteri Cari Detayı
+                          <ArrowRight size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
