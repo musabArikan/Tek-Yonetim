@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const jsonPlugin = require("../utils/jsonPlugin");
 
 const collectionSchema = new mongoose.Schema(
   {
@@ -12,11 +13,7 @@ const collectionSchema = new mongoose.Schema(
       ref: "Customer",
       required: [true, "customerId zorunludur"],
     },
-    // Hangi taksit için yapıldığını belirtir (opsiyonel, genel tahsilat da olabilir)
-    installmentId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Installment",
-    },
+    transactionId: { type: mongoose.Schema.Types.ObjectId, ref: "Transaction", default: null },
     amount: {
       type: Number,
       required: [true, "Tahsilat tutarı zorunludur"],
@@ -27,36 +24,19 @@ const collectionSchema = new mongoose.Schema(
       ref: "User",
       required: [true, "Tahsilatı yapan personel zorunludur"],
     },
-    paymentMethod: {
-      type: String,
-      enum: ["Nakit", "Kart", "Havale", "EFT", "Çek", "Diğer"],
-      default: "Nakit",
-    },
-    collectionDate: {
-      type: Date,
-      required: [true, "Tahsilat tarihi zorunludur"],
-      default: Date.now,
-    },
-    notes: {
-      type: String,
-      trim: true,
-    },
-    isDeleted: {
-      type: Boolean,
-      default: false,
-    },
-    deletedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-    },
+    collectedByName: { type: String, trim: true, default: "" },
+    paymentMethod: { type: String, trim: true, default: "Nakit" },
+    collectionDate: { type: Date, required: true, default: Date.now },
+    notes: { type: String, trim: true, default: "" },
+    kaynak: { type: String, default: "TAHSILAT" },
+    isDeleted: { type: Boolean, default: false },
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
-  {
-    timestamps: true,
-  },
+  { timestamps: true },
 );
 
 collectionSchema.index({ tenantId: 1, customerId: 1 });
-collectionSchema.index({ tenantId: 1, collectionDate: -1 });
-collectionSchema.index({ tenantId: 1, installmentId: 1 });
+collectionSchema.index({ tenantId: 1, isDeleted: 1, collectionDate: -1 });
+collectionSchema.plugin(jsonPlugin);
 
 module.exports = mongoose.model("Collection", collectionSchema);

@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const jsonPlugin = require("../utils/jsonPlugin");
 
 const stockSchema = new mongoose.Schema(
   {
@@ -12,36 +13,20 @@ const stockSchema = new mongoose.Schema(
       ref: "User",
       required: [true, "createdBy zorunludur"],
     },
-    urunKodu: {
-      type: String,
-      required: [true, "Ürün kodu zorunludur"],
-      trim: true,
-    },
-    marka: {
-      type: String,
-      enum: ["Profilo", "Bosch", "Gipa"],
-    },
-    adet: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    envanterdekiAdet: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    serialNumbers: {
-      type: [String],
-      default: [],
-    },
+    urunKodu: { type: String, required: [true, "Ürün kodu zorunludur"], trim: true },
+    urunAdi: { type: String, trim: true, default: "" },
+    marka: { type: String, trim: true, default: "" },
+    kategori: { type: String, trim: true, default: "" },
+    alisFiyati: { type: Number, default: 0, min: 0 },
+    satisFiyati: { type: Number, default: 0, min: 0 },
+    adet: { type: Number, default: 0, min: 0 },
+    envanterdekiAdet: { type: Number, default: 0, min: 0 },
+    serialNumbers: { type: [String], default: [] },
   },
-  {
-    timestamps: true,
-  },
+  { timestamps: true },
 );
 
 stockSchema.index({ tenantId: 1, urunKodu: 1 }, { unique: true });
-stockSchema.index({ tenantId: 1 });
+stockSchema.plugin(jsonPlugin);
 
 module.exports = mongoose.model("Stock", stockSchema);

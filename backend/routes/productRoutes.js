@@ -1,47 +1,35 @@
 const express = require("express");
+const router = express.Router();
+const authMiddleware = require("../middlewares/authMiddleware");
 const {
   getProducts,
+  getBrands,
+  addBrand,
+  getCategories,
+  addCategory,
   createProduct,
   updateProduct,
   deleteProduct,
-  addStockMovement,
-  getStockHistory,
-  cancelStockMovement,
+  getMovements,
+  addMovement,
+  cancelMovement,
 } = require("../controllers/productController");
-const { requireAuth } = require("../middlewares/authMiddleware");
-const { authorize } = require("../middlewares/authorize");
 
-const router = express.Router();
+router.use(authMiddleware);
 
-// Tüm route'lar requireAuth ile korunuyor
-router
-  .route("/")
-  .get(requireAuth, getProducts)
-  .post(requireAuth, authorize("stokDuzenleyebilir"), createProduct);
+router.get("/brands", getBrands);
+router.post("/brands", addBrand);
+router.get("/categories", getCategories);
+router.post("/categories", addCategory);
+router.get("/movements", getMovements);
+router.post("/movements", addMovement);
+router.post("/movements/:id/cancel", cancelMovement);
+router.patch("/movements/:id/cancel", cancelMovement);
+router.delete("/movements/:id", cancelMovement);
 
-router
-  .route("/:id")
-  .put(requireAuth, authorize("stokDuzenleyebilir"), updateProduct)
-  .delete(requireAuth, authorize("stokDuzenleyebilir"), deleteProduct);
-
-// Stok Hareketleri
-router
-  .route("/:id/movements")
-  .get(requireAuth, getStockHistory);
-
-// Genel hareket listesi (tüm ürünler)
-router
-  .route("/movements/list")
-  .get(requireAuth, getStockHistory);
-
-// Stok hareketi ekle
-router
-  .route("/movements/add")
-  .post(requireAuth, authorize("stokDuzenleyebilir"), addStockMovement);
-
-// Stok hareketi iptal et (undo - soft-delete)
-router
-  .route("/movements/:id/cancel")
-  .patch(requireAuth, authorize("stokDuzenleyebilir"), cancelStockMovement);
+router.get("/", getProducts);
+router.post("/", createProduct);
+router.put("/:id", updateProduct);
+router.delete("/:id", deleteProduct);
 
 module.exports = router;

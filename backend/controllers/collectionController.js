@@ -1,225 +1,197 @@
-const mongoose = require("mongoose");
 const Collection = require("../models/Collection");
-const Installment = require("../models/Installment");
 const Customer = require("../models/Customer");
-const { getTenantId, getUserId, withTenant } = require("../utils/tenantScope");
+const Transaction = require("../models/Transaction");
+const User = require("../models/User");
+const { str, num, round2, isObjectId, dayBounds } = require("../utils/helpers");
+const { customerRef, userRef } = require("../utils/serializers");
+const { createTransactionForCustomer } = require("../services/saleService");
 const { logAction } = require("../utils/auditLogger");
 
-// POST /api/collections
-const createCollection = async (req, res) => {
-  const session = await mongoose.startSession();
+const attachCollectionRefs = async (tenantId, list) => {
+  const customerIds = [
+    ...new Set(
+      list
+        .map((c) => (c.customerId ? String(c.customerId) : ""))
+        .filter((id) => isObjectId(id)),
+    ),
+  ];
+  const userIds = [
+    ...new Set(
+      list
+        .map((c) => (c.collectedBy ? String(c.collectedBy) : ""))
+        .filter((id) => isObjectId(id)),
+    ),
+  ];
 
-  try {
-    const {
-      customerId,
-      installmentId,
-      amount,
-      paymentMethod,
-      collectionDate,
-      notes,
-    } = req.body;
+  const [customers, users] = await Promise.all([
+    customerIds.length ? Customer.find({ tenantId, _id: { $in: customerIds } }).lean() : [],
+    userIds.length ? User.find({ tenantId, _id: { $in: userIds } }).lean() : [],
+  ]);
 
-    if (!customerId || !amount) {
-      return res.status(400).json({ message: "customerId ve amount zorunludur" });
-    }
+  const customerMap = new Map(customers.map((c) => [String(c._id), customerRef(c)]));
+  const userMap = new Map(users.map((u) => [String(u._id), userRef(u)]));
 
-    if (amount <= 0) {
-      return res.status(400).json({ message: "Tahsilat tutarı 0'dan büyük olmalıdır" });
-    }
-
-    let collection;
-    await session.withTransaction(async () => {
-      // Müşteri kontrolü
-      const customer = await Customer.findOne(
-        withTenant(req, { _id: customerId, isDeleted: false }),
-      ).session(session);
-      if (!customer) {
-        throw Object.assign(new Error("Müşteri bulunamadı"), { statusCode: 404 });
-      }
-
-      collection = await Collection.create(
-        [
-          {
-            tenantId: getTenantId(req),
-            customerId,
-            installmentId: installmentId || undefined,
-            amount,
-            collectedBy: getUserId(req),
-            paymentMethod: paymentMethod || "Nakit",
-            collectionDate: collectionDate ? new Date(collectionDate) : new Date(),
-            notes: notes?.trim(),
-          },
-        ],
-        { session },
-      );
-      collection = collection[0];
-
-      if (installmentId) {
-        const installment = await Installment.findOne(
-          withTenant(req, { _id: installmentId, isDeleted: false }),
-        ).session(session);
-
-        if (installment && !installment.isPaid) {
-          installment.paidAmount = (installment.paidAmount || 0) + amount;
-          
-          if (installment.paidAmount >= installment.amount) {
-            installment.isPaid = true;
-            installment.status = "Ödendi";
-            installment.paidDate = collection.collectionDate;
-            installment.paidAmount = installment.amount; // Cap it
-          } else {
-            installment.status = "Kısmi Ödendi";
-          }
-          await installment.save({ session });
-        }
-      }
-
-      // Müşteri bakiyesini güncelle
-      await Customer.findByIdAndUpdate(
-        customerId,
-        { $inc: { toplamKalanBakiye: -amount } },
-        { session },
-      );
-    });
-
-    const populated = await Collection.findById(collection._id)
-      .populate("customerId", "ad soyad musteriNo")
-      .populate("collectedBy", "ad soyad")
-      .populate("installmentId", "installmentNumber dueDate amount");
-
-    // Audit log
-    logAction(req, "TAHSILAT_AL", "Collection", collection._id, {
-      customerId,
-      amount,
-      paymentMethod: paymentMethod || "Nakit",
-    });
-    res.status(201).json(populated);
-  } catch (error) {
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({ message: error.message });
-    }
-    if (error.name === "ValidationError") {
-      return res.status(400).json({
-        message: Object.values(error.errors)
-          .map((e) => e.message)
-          .join(", "),
-      });
-    }
-    res.status(500).json({ message: "Tahsilat oluşturulurken hata oluştu", error: error.message });
-  } finally {
-    await session.endSession();
-  }
+  return list.map((item) => {
+    const json = typeof item.toJSON === "function" ? item.toJSON() : { ...item, id: String(item._id) };
+    return {
+      ...json,
+      customerId: customerMap.get(String(item.customerId)) || json.customerId,
+      collectedBy: userMap.get(String(item.collectedBy)) || json.collectedBy,
+    };
+  });
 };
 
 // GET /api/collections
 const getCollections = async (req, res) => {
   try {
-    const { customerId, collectedBy, startDate, endDate } = req.query;
-    const filter = withTenant(req, { isDeleted: false });
+    const tenantId = req.user.tenantId;
+    const query = { tenantId, isDeleted: false };
 
-    if (customerId) filter.customerId = customerId;
-    if (collectedBy) filter.collectedBy = collectedBy;
-    if (startDate || endDate) {
-      filter.collectionDate = {};
-      if (startDate) filter.collectionDate.$gte = new Date(startDate);
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        filter.collectionDate.$lte = end;
+    if (req.query?.customerId && isObjectId(req.query.customerId)) {
+      query.customerId = req.query.customerId;
+    }
+    if (req.query?.collectedBy && isObjectId(req.query.collectedBy)) {
+      query.collectedBy = req.query.collectedBy;
+    }
+    if (req.query?.startDate || req.query?.endDate) {
+      query.collectionDate = {};
+      if (req.query.startDate) {
+        query.collectionDate.$gte = new Date(dayBounds(req.query.startDate)[0]);
+      }
+      if (req.query.endDate) {
+        query.collectionDate.$lte = new Date(dayBounds(req.query.endDate)[1]);
       }
     }
 
-    const collections = await Collection.find(filter)
-      .populate("customerId", "ad soyad musteriNo telefon")
-      .populate("collectedBy", "ad soyad")
-      .populate("installmentId", "installmentNumber dueDate amount")
-      .sort({ collectionDate: -1 });
-
-    res.status(200).json(collections);
+    const list = await Collection.find(query).sort({ collectionDate: -1, createdAt: -1 });
+    return res.json(await attachCollectionRefs(tenantId, list));
   } catch (error) {
-    res.status(500).json({ message: "Tahsilatlar alınırken hata oluştu", error: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 
 // GET /api/collections/:id
 const getCollectionById = async (req, res) => {
   try {
-    const collection = await Collection.findOne(
-      withTenant(req, { _id: req.params.id, isDeleted: false }),
-    )
-      .populate("customerId", "ad soyad telefon")
-      .populate("collectedBy", "ad soyad")
-      .populate("installmentId", "installmentNumber dueDate amount");
-
-    if (!collection) {
-      return res.status(404).json({ message: "Tahsilat bulunamadı" });
+    if (!isObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Geçersiz tahsilat kimliği." });
     }
-
-    res.status(200).json(collection);
+    const collection = await Collection.findOne({
+      _id: req.params.id,
+      tenantId: req.user.tenantId,
+      isDeleted: false,
+    });
+    if (!collection) {
+      return res.status(404).json({ message: "Tahsilat bulunamadı." });
+    }
+    const [enriched] = await attachCollectionRefs(req.user.tenantId, [collection]);
+    return res.json(enriched);
   } catch (error) {
-    res.status(500).json({ message: "Tahsilat alınırken hata oluştu", error: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 
-// DELETE /api/collections/:id — Tahsilat iptali (bakiye geri yüklenir)
-const deleteCollection = async (req, res) => {
-  const session = await mongoose.startSession();
-
+// POST /api/collections
+const createCollection = async (req, res) => {
   try {
-    await session.withTransaction(async () => {
-      const collection = await Collection.findOne(
-        withTenant(req, { _id: req.params.id, isDeleted: false }),
-      ).session(session);
+    const tenantId = req.user.tenantId;
+    const customerId = req.body?.customerId || req.body?.musteriId;
+    const amount = num(req.body?.amount ?? req.body?.tutar ?? req.body?.odenenTutar, 0);
 
-      if (!collection) {
-        throw Object.assign(new Error("Tahsilat bulunamadı"), { statusCode: 404 });
-      }
+    if (!customerId || !isObjectId(customerId) || !(amount > 0)) {
+      return res.status(400).json({ message: "customerId ve geçerli bir tutar zorunludur." });
+    }
 
-      // Eğer taksit işaretlendiyse geri al
-      if (collection.installmentId) {
-        const installment = await Installment.findById(collection.installmentId).session(session);
-        if (installment) {
-          installment.paidAmount = Math.max(0, (installment.paidAmount || 0) - collection.amount);
-          
-          if (installment.paidAmount === 0) {
-            installment.status = "Bekliyor";
-            installment.isPaid = false;
-            installment.paidDate = null;
-          } else {
-            installment.status = "Kısmi Ödendi";
-            installment.isPaid = false;
-            installment.paidDate = null;
-          }
-          await installment.save({ session });
-        }
-      }
+    const customer = await Customer.findOne({
+      _id: customerId,
+      tenantId,
+      isDeleted: false,
+    });
+    if (!customer) {
+      return res.status(404).json({ message: "Müşteri bulunamadı." });
+    }
 
-      // Müşteri bakiyesini geri yükle
-      await Customer.findByIdAndUpdate(
-        collection.customerId,
-        { $inc: { toplamKalanBakiye: collection.amount } },
-        { session },
-      );
-
-      collection.isDeleted = true;
-      collection.deletedBy = getUserId(req);
-      await collection.save({ session });
+    const transaction = await createTransactionForCustomer({
+      customer,
+      payload: {
+        islemTuru: "Tahsilat",
+        tarih: req.body?.collectionDate || req.body?.tarih,
+        odenenTutar: amount,
+        odemeYontemi: str(req.body?.paymentMethod || req.body?.odemeYontemi) || "Nakit",
+        aciklama: str(req.body?.notes || req.body?.aciklama),
+      },
+      actor: req.user,
     });
 
-    res.status(200).json({ message: "Tahsilat başarıyla iptal edildi" });
-  } catch (error) {
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({ message: error.message });
+    const collection = await Collection.findOne({
+      tenantId,
+      transactionId: transaction._id,
+      isDeleted: false,
+    });
+
+    if (!collection) {
+      return res.status(201).json(transaction);
     }
-    res.status(500).json({ message: "Tahsilat silinirken hata oluştu", error: error.message });
-  } finally {
-    await session.endSession();
+
+    const [enriched] = await attachCollectionRefs(tenantId, [collection]);
+    return res.status(201).json(enriched);
+  } catch (error) {
+    const status = error.status || 500;
+    return res.status(status).json({ message: error.message });
+  }
+};
+
+// DELETE /api/collections/:id
+const deleteCollection = async (req, res) => {
+  try {
+    if (!isObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Geçersiz tahsilat kimliği." });
+    }
+    const tenantId = req.user.tenantId;
+    const collection = await Collection.findOne({
+      _id: req.params.id,
+      tenantId,
+      isDeleted: false,
+    });
+    if (!collection) {
+      return res.status(404).json({ message: "Tahsilat bulunamadı." });
+    }
+
+    const customer = await Customer.findOne({
+      _id: collection.customerId,
+      tenantId,
+      isDeleted: false,
+    });
+    if (customer) {
+      const nextBalance = round2(num(customer.toplamKalanBakiye, 0) + num(collection.amount, 0));
+      customer.toplamKalanBakiye = nextBalance;
+      customer.kalanBorc = nextBalance;
+      await customer.save();
+    }
+
+    if (collection.kaynak === "TAHSILAT" && collection.transactionId) {
+      await Transaction.updateOne(
+        { _id: collection.transactionId, tenantId },
+        { $set: { isDeleted: true, deletedBy: req.user.userId } },
+      );
+    }
+
+    collection.isDeleted = true;
+    await collection.save();
+
+    logAction(req.user, "TAHSILAT_IPTAL", "Collection", collection._id, {
+      amount: collection.amount,
+    });
+
+    return res.json({ message: "Tahsilat başarıyla iptal edildi" });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
 };
 
 module.exports = {
-  createCollection,
   getCollections,
   getCollectionById,
+  createCollection,
   deleteCollection,
 };

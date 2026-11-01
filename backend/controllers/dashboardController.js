@@ -1,102 +1,146 @@
-const mongoose = require("mongoose");
+const Transaction = require("../models/Transaction");
 const Collection = require("../models/Collection");
-const Installment = require("../models/Installment");
-const Shipment = require("../models/Shipment");
+const Customer = require("../models/Customer");
 const Product = require("../models/Product");
+const User = require("../models/User");
+const ActionLog = require("../models/ActionLog");
+const { num, round2, fullName, todayBounds, inRange } = require("../utils/helpers");
 
-/**
- * GET /api/dashboard/summary
- * Tenant'a özgü C-Level özet dashboard verilerini döner.
- */
+const pendingQuantity = (line = {}) =>
+  num(
+    line.envanterdeBekleyenAdet !== undefined
+      ? line.envanterdeBekleyenAdet
+      : line.envanterdeMi
+        ? line.adet
+        : 0,
+  );
+
+// GET /api/dashboard & GET /api/dashboard/summary
 const getDashboardSummary = async (req, res) => {
   try {
-    const tenantObjectId = new mongoose.Types.ObjectId(req.user.tenantId);
-
+    const tenantId = req.user.tenantId;
+    const dayRange = todayBounds();
     const now = new Date();
-    // Start of today (local time mapping to UTC if preferred, but let's just use local start/end as standard)
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const monthRange = [
+      new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+      new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime(),
+    ];
 
-    // 1. Bugünün Kasa Tahsilatı
-    const gunlukKasaResult = await Collection.aggregate([
-      {
-        $match: {
-          tenantId: tenantObjectId,
-          isDeleted: false,
-          collectionDate: { $gte: startOfDay, $lte: endOfDay },
-        },
-      },
-      { $group: { _id: null, total: { $sum: "$amount" } } },
+    const [liveTx, collections, customers, products, users, actionLogs] = await Promise.all([
+      Transaction.find({ tenantId, isDeleted: false }).sort({ tarih: -1, createdAt: -1 }).lean(),
+      Collection.find({ tenantId, isDeleted: false }).lean(),
+      Customer.find({ tenantId, isDeleted: false }).lean(),
+      Product.find({ tenantId, isDeleted: false }).lean(),
+      User.find({ tenantId, isDeleted: false }).lean(),
+      ActionLog.find({ tenantId }).sort({ createdAt: -1 }).limit(5).lean(),
     ]);
-    const gunlukKasa = gunlukKasaResult[0]?.total || 0;
 
-    // 2. Vadesi Geçen Toplam Alacak
-    const vadesiGecenResult = await Installment.aggregate([
-      {
-        $match: {
-          tenantId: tenantObjectId,
-          isDeleted: false,
-          isPaid: false,
-          dueDate: { $lt: startOfDay }, // Vadesi bugünden önce bitmiş
-        },
-      },
-      { $group: { _id: null, total: { $sum: "$amount" } } },
-    ]);
-    const vadesiGecenAlacak = vadesiGecenResult[0]?.total || 0;
+    const sales = liveTx.filter((t) => t.islemTuru === "Satış");
+    const sumTotal = (list) => round2(list.reduce((sum, t) => sum + num(t.toplamTutar, 0), 0));
 
-    // Vadesi geçen en riskli 5 taksit (en eski tarihli olanlar)
-    const riskliTaksitler = await Installment.find({
-      tenantId: tenantObjectId,
-      isDeleted: false,
-      isPaid: false,
-      dueDate: { $lt: startOfDay },
-    })
-      .sort({ dueDate: 1 })
-      .limit(5)
-      .populate("customerId", "ad soyad telefon")
-      .lean();
+    const gunlukKasa = round2(
+      collections
+        .filter((c) => inRange(c.collectionDate, dayRange))
+        .reduce((sum, c) => sum + num(c.amount, 0), 0),
+    );
+    const gunlukSatis = sumTotal(sales.filter((t) => inRange(t.tarih, dayRange)));
+    const aylikSatis = sumTotal(sales.filter((t) => inRange(t.tarih, monthRange)));
 
-    // 3. Bugünün Sevkiyatları
-    const bugunkuSevkiyatlar = await Shipment.find({
-      tenantId: tenantObjectId,
-      deliveryDate: { $gte: startOfDay, $lte: endOfDay },
-    })
-      .populate("customerId", "ad soyad adres telefon")
-      .lean();
-    const sevkiyatSayisi = bugunkuSevkiyatlar.length;
+    const debtors = customers.filter((c) => num(c.toplamKalanBakiye, 0) > 0);
+    const toplamAlacak = round2(
+      debtors.reduce((sum, c) => sum + num(c.toplamKalanBakiye, 0), 0),
+    );
 
-    // 4. Kritik Stok Seviyesi (Stoğu 5 ve altında olan ürün sayısı)
-    const kritikStokCount = await Product.countDocuments({
-      tenantId: tenantObjectId,
-      isDeleted: false,
-      mevcutStok: { $lte: 5 },
+    const criticalProducts = products.filter(
+      (p) => num(p.mevcutStok, 0) <= num(p.kritikStokSeviyesi, 5),
+    );
+
+    const pendingLines = liveTx.flatMap((t) =>
+      (t.urunler || []).map((line) => pendingQuantity(line)).filter((qty) => qty > 0),
+    );
+    const emanetteBekleyenAdet = pendingLines.reduce((sum, qty) => sum + qty, 0);
+
+    const customerById = new Map(customers.map((c) => [String(c._id), c]));
+    const userById = new Map(users.map((u) => [String(u._id), u]));
+
+    const magazaHareketleri = liveTx.map((t) => {
+      const isSale = t.islemTuru === "Satış";
+      const cust = customerById.get(String(t.musteriId));
+      const actorUser = userById.get(String(t.createdBy));
+      const personelAdi =
+        t.personelAdi || (actorUser ? fullName(actorUser) : "Mağaza Yetkilisi");
+      const musteriAdSoyad = t.musteriAdSoyad || (cust ? fullName(cust) : "Müşteri");
+      const urunDetay = (t.urunler || [])
+        .map((l) =>
+          l.urunAdi && l.urunAdi !== l.urunKodu
+            ? `${l.urunKodu} — ${l.urunAdi} (x${l.adet})`
+            : `${l.urunKodu} (x${l.adet})`,
+        )
+        .join(", ");
+
+      return {
+        id: String(t._id),
+        _id: t._id,
+        tarih: t.tarih || t.createdAt,
+        personelId: t.createdBy ? String(t.createdBy) : "",
+        personelAdi,
+        musteriId: cust?._id || t.musteriId,
+        musteriAdSoyad,
+        musteriNo: t.musteriNo || cust?.musteriNo || "",
+        islemTuru: t.islemTuru || "Satış",
+        odemeYontemi: t.odemeYontemi || (isSale ? "Veresiye" : "Nakit"),
+        urunler: t.urunler || [],
+        detay: isSale
+          ? urunDetay || t.urunBilgisi || "Ürün Satışı"
+          : t.aciklama || `${t.odemeYontemi || "Nakit"} ile cari borç tahsilatı`,
+        tutar: isSale
+          ? num(t.toplamTutar, 0)
+          : num(t.odenenTutar ?? t.tutar ?? t.toplamTutar ?? t.pesinat ?? 0),
+        pesinat: num(t.pesinat, 0),
+        kalanBorc: num(t.kalanHesap ?? t.kalanBorc ?? 0),
+      };
     });
 
-    // 5. Son Hareketler (Recent Activity)
-    const ActionLog = require("../models/ActionLog");
-    const sonHareketler = await ActionLog.find({ tenantId: tenantObjectId })
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .lean();
+    const personelListesi = users.map((u) => ({
+      id: String(u._id),
+      _id: u._id,
+      adSoyad: fullName(u),
+      role: u.role,
+    }));
 
-    res.status(200).json({
+    return res.json({
       gunlukKasa,
-      vadesiGecenAlacak,
-      bugunkuSevkiyatlar: {
-        sayi: sevkiyatSayisi,
-        liste: bugunkuSevkiyatlar,
+      toplamAcikAlacak: toplamAlacak,
+      alacakliMusteriSayisi: debtors.length,
+      emanetteBekleyenAdet,
+      emanetteBekleyenKayitSayisi: pendingLines.length,
+      kritikStokSayisi: criticalProducts.length,
+      magazaHareketleri,
+      personelListesi,
+      sonHareketler: actionLogs,
+      kasa: { gunlukSatis, aylikSatis },
+      alacaklar: { toplamAlacak, alacakliMusteriSayisi: debtors.length },
+      kritikStok: {
+        esik: 5,
+        urunSayisi: criticalProducts.length,
+        urunler: criticalProducts
+          .sort((a, b) => num(a.mevcutStok) - num(b.mevcutStok))
+          .map((p) => ({
+            urunKodu: p.urunKodu || p.ad,
+            marka: p.marka || "",
+            adet: num(p.mevcutStok),
+          })),
       },
-      kritikStokSayisi: kritikStokCount,
-      riskliTaksitler,
-      sonHareketler,
+      bekleyenEnvanter: {
+        bekleyenTeslimatSayisi: pendingLines.length,
+        bekleyenToplamAdet: emanetteBekleyenAdet,
+      },
     });
   } catch (error) {
-    console.error("Dashboard summary error:", error);
-    res.status(500).json({
-      message: "Dashboard özet verileri alınırken sunucu hatası oluştu.",
-      error: error.message,
-    });
+    return res.status(500).json({ message: error.message });
   }
 };
 
-module.exports = { getDashboardSummary };
+module.exports = {
+  getDashboardSummary,
+};

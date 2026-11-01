@@ -70,19 +70,28 @@ export default function DashboardPage({ onNewCustomerSale }) {
     personelListesi = [],
   } = data || {};
 
+  const safeHareketler = useMemo(
+    () => (Array.isArray(magazaHareketleri) ? magazaHareketleri : []),
+    [magazaHareketleri],
+  );
+  const safePersoneller = useMemo(
+    () => (Array.isArray(personelListesi) ? personelListesi : []),
+    [personelListesi],
+  );
+
   const personelOptions = useMemo(() => {
-    const namesFromTx = magazaHareketleri
-      .map((item) => item.personelAdi)
+    const namesFromTx = safeHareketler
+      .map((item) => item?.personelAdi)
       .filter(Boolean);
-    const namesFromUsers = personelListesi
-      .map((u) => u.adSoyad)
+    const namesFromUsers = safePersoneller
+      .map((u) => u?.adSoyad)
       .filter(Boolean);
     return [...new Set([...namesFromUsers, ...namesFromTx])];
-  }, [magazaHareketleri, personelListesi]);
+  }, [safeHareketler, safePersoneller]);
 
   const filteredHareketler = useMemo(() => {
     const q = searchQuery.toLocaleLowerCase("tr-TR").trim();
-    return magazaHareketleri.filter((item) => {
+    return safeHareketler.filter((item) => {
       if (typeFilter !== "all" && item.islemTuru !== typeFilter) {
         return false;
       }
@@ -97,7 +106,7 @@ export default function DashboardPage({ onNewCustomerSale }) {
         String(item.musteriNo || "").includes(q)
       );
     }).slice(0, 15);
-  }, [magazaHareketleri, typeFilter, personelFilter, searchQuery]);
+  }, [safeHareketler, typeFilter, personelFilter, searchQuery]);
 
   if (loading) {
     return (

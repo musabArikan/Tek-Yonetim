@@ -1,10 +1,11 @@
 const express = require("express");
 const router = express.Router();
-const { requireAuth } = require("../middlewares/authMiddleware");
+const authMiddleware = require("../middlewares/authMiddleware");
 const { getDashboardSummary } = require("../controllers/dashboardController");
 
-// GET /api/dashboard/summary
-// Kimlik doğrulaması zorunlu; tenantId middleware'den otomatik alınır
-router.get("/summary", requireAuth, getDashboardSummary);
+router.use(authMiddleware);
+
+router.get("/", getDashboardSummary);
+router.get("/summary", getDashboardSummary);
 
 module.exports = router;

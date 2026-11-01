@@ -1,10 +1,22 @@
 const express = require("express");
-const { getZRaporu, sendReminder } = require("../controllers/reportController");
-const { requireAuth } = require("../middlewares/authMiddleware");
-
 const router = express.Router();
+const authMiddleware = require("../middlewares/authMiddleware");
+const { authorizePage } = require("../middlewares/authorize");
+const {
+  getDailyReport,
+  getMonthlyReport,
+  sendReminder,
+  getExportRows,
+} = require("../controllers/reportController");
 
-router.get("/z-raporu", requireAuth, getZRaporu);
-router.post("/send-reminder", requireAuth, sendReminder);
+router.use(authMiddleware);
+router.use(authorizePage("reports"));
+
+router.get("/daily", getDailyReport);
+router.get("/z-raporu", getDailyReport);
+router.get("/monthly", getMonthlyReport);
+router.post("/reminder", sendReminder);
+router.get("/export-rows", getExportRows);
+router.get("/export/:type", getExportRows);
 
 module.exports = router;

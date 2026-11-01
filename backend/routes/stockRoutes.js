@@ -1,18 +1,17 @@
 const express = require("express");
+const router = express.Router();
+const authMiddleware = require("../middlewares/authMiddleware");
 const {
   getStocks,
   addOrUpdateStock,
   updateStockQuantity,
 } = require("../controllers/stockController");
-const { requireAuth } = require("../middlewares/authMiddleware");
-const { authorize } = require("../middlewares/authorize");
 
-const router = express.Router();
+router.use(authMiddleware);
 
-router
-  .route("/")
-  .get(requireAuth, getStocks)
-  .post(requireAuth, authorize("stokDuzenleyebilir"), addOrUpdateStock);
-router.put("/:id", requireAuth, authorize("stokDuzenleyebilir"), updateStockQuantity);
+router.get("/", getStocks);
+router.post("/", addOrUpdateStock);
+router.put("/:id", updateStockQuantity);
+router.patch("/:id/quantity", updateStockQuantity);
 
 module.exports = router;

@@ -663,20 +663,17 @@ const seedDemoDataForStore = (db, store, ownerUser) => {
 const auth = {
   login: ({ email, password }) =>
     run((db) => {
-      const rawIdentifier = lc(email);
-      const identifier = LOGIN_ALIASES[rawIdentifier] || rawIdentifier;
+      const identifier = lc(email);
       if (!identifier || !password) {
-        throw createHttpError("E-posta ve şifre zorunludur", 400);
+        throw createHttpError("E-posta ve şifre zorunludur.", 400);
       }
 
       const user = db.users.find(
-        (u) =>
-          !u.isDeleted &&
-          (lc(u.email) === identifier || lc(u.email).split("@")[0] === identifier),
+        (u) => !u.isDeleted && lc(u.email) === identifier,
       );
 
-      if (!user || user.password !== password) {
-        throw createHttpError("E-posta veya şifre hatalı", 401);
+      if (!user || user.password !== String(password)) {
+        throw createHttpError("Böyle bir hesap bulunamadı veya şifreniz hatalı.", 401);
       }
 
       const store = db.stores.find((s) => sameId(s._id, user.tenantId));
@@ -714,8 +711,7 @@ const auth = {
         const phone = str(payload.phone || payload.telefon);
         const address = str(payload.address || payload.adres);
         const password = payload.password;
-        const withDemoData =
-          payload.withDemoData !== undefined ? Boolean(payload.withDemoData) : true;
+        const withDemoData = false;
 
         if (!storeName || !ownerName || !email || !password) {
           throw createHttpError(
@@ -728,8 +724,8 @@ const auth = {
           throw createHttpError("Geçerli bir e-posta adresi giriniz.", 400);
         }
 
-        if (String(password).length < 5) {
-          throw createHttpError("Şifre en az 5 karakter olmalıdır.", 400);
+        if (String(password).length < 4) {
+          throw createHttpError("Şifre en az 4 karakter olmalıdır.", 400);
         }
 
         // E-posta tekillik kontrolü (Mağaza adında tekillik kısıtlaması YOKTUR)
@@ -3491,6 +3487,13 @@ const initialize = () => {
   try {
     const db = loadDb();
     const session = getAuthSession();
+    if (!session) return;
+
+    // Gerçek backend JWT oturumu varsa dokunma
+    if (session.token && !String(session.token).startsWith("local.")) {
+      return;
+    }
+
     const matchedUser =
       session && db.users.find((u) => !u.isDeleted && sameId(u._id, session.userId));
 
@@ -3504,20 +3507,8 @@ const initialize = () => {
       return;
     }
 
-    // Geçersiz/eski oturum varsa temizle
-    if (session) {
-      clearAuthSession({ markLoggedOut: false });
-    }
-
-    // Kullanıcı açıkça "Çıkış Yap" demediyse varsayılan yönetici oturumuyla doğrudan aç
-    if (!isExplicitlyLoggedOut()) {
-      const defaultAdmin =
-        db.users.find((u) => !u.isDeleted && u.role === "admin") ||
-        db.users.find((u) => !u.isDeleted);
-      if (defaultAdmin) {
-        setAuthSession(buildSessionForUser(defaultAdmin, db));
-      }
-    }
+    // Geçersiz/eski lokal oturum varsa temizle (otomatik giriş yapma!)
+    clearAuthSession({ markLoggedOut: false });
   } catch (error) {
     console.error("[localDb] Başlatma hatası:", error);
   }

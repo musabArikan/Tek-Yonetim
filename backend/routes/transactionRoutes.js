@@ -1,24 +1,16 @@
 const express = require("express");
-const {
-  createTransaction,
-  getTransactions,
-  getCustomerTransactions,
-} = require("../controllers/transactionController");
-const { requireAuth } = require("../middlewares/authMiddleware");
-const { authorize } = require("../middlewares/authorize");
-
 const router = express.Router();
+const authMiddleware = require("../middlewares/authMiddleware");
+const {
+  getTransactions,
+  createTransaction,
+  getTransactionsByCustomer,
+} = require("../controllers/transactionController");
 
-router
-  .route("/")
-  .post(
-    requireAuth,
-    authorize((req) =>
-      req.body?.islemTuru === "Tahsilat" ? "tahsilatAlabilir" : "satisYapabilir",
-    ),
-    createTransaction,
-  )
-  .get(requireAuth, getTransactions);
-router.route("/customer/:id").get(requireAuth, getCustomerTransactions);
+router.use(authMiddleware);
+
+router.get("/", getTransactions);
+router.post("/", createTransaction);
+router.get("/customer/:customerId", getTransactionsByCustomer);
 
 module.exports = router;

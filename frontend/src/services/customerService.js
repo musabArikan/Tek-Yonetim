@@ -1,13 +1,39 @@
+import api from "../utils/api.js";
 import { localDb } from "../utils/localDb.js";
 import { call } from "./serviceUtils.js";
 
-export const getCustomers = () => call(() => localDb.customers.list());
+export const getCustomers = (params = {}) =>
+  call(
+    async () => {
+      const { data } = await api.get("/customers", { params });
+      return Array.isArray(data) ? data : [];
+    },
+    () => localDb.customers.list(),
+  );
 
 export const getCustomerById = (customerId) =>
-  call(() => localDb.customers.getById(customerId));
+  call(
+    async () => {
+      const { data } = await api.get(`/customers/${customerId}`);
+      return data;
+    },
+    () => localDb.customers.getById(customerId),
+  );
 
 export const createCustomer = (customerData) =>
-  call(() => localDb.customers.create(customerData));
+  call(
+    async () => {
+      const { data } = await api.post("/customers", customerData);
+      return data;
+    },
+    () => localDb.customers.create(customerData),
+  );
 
 export const deleteCustomer = (customerId) =>
-  call(() => localDb.customers.remove(customerId));
+  call(
+    async () => {
+      const { data } = await api.delete(`/customers/${customerId}`);
+      return data;
+    },
+    () => localDb.customers.remove(customerId),
+  );

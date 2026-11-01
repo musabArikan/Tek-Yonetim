@@ -1,129 +1,138 @@
 const Transaction = require("../models/Transaction");
+const Customer = require("../models/Customer");
 const Stock = require("../models/Stock");
-const { withTenant, activeTransactions } = require("../utils/tenantScope");
+const { str, num, isObjectId } = require("../utils/helpers");
+const { customerRef } = require("../utils/serializers");
+const { syncProductFromStock } = require("../services/inventorySync");
+const { logAction } = require("../utils/auditLogger");
 
-const parseNumber = (value) => {
-  const result = Number(value);
-  return Number.isFinite(result) ? result : 0;
-};
+const pendingQuantity = (line = {}) =>
+  num(
+    line.envanterdeBekleyenAdet !== undefined
+      ? line.envanterdeBekleyenAdet
+      : line.envanterdeMi
+        ? line.adet
+        : 0,
+  );
 
+// GET /api/inventory/pending & GET /api/inventory
 const getPendingInventory = async (req, res) => {
   try {
-    const transactions = await Transaction.find(
-      activeTransactions(req, {
-        urunler: {
-          $elemMatch: {
-            $or: [
-              { envanterdeMi: true },
-              { envanterdeBekleyenAdet: { $gt: 0 } },
-            ],
-          },
-        },
-      }),
-    )
-      .populate("musteriId", "ad soyad telefon")
-      .sort({ createdAt: -1 });
+    const tenantId = req.user.tenantId;
+    const transactions = await Transaction.find({
+      tenantId,
+      isDeleted: false,
+      $or: [
+        { "urunler.envanterdeBekleyenAdet": { $gt: 0 } },
+        { "urunler.envanterdeMi": true },
+      ],
+    }).sort({ tarih: -1, createdAt: -1 });
 
-    const normalizedTransactions = transactions.map((transaction) => {
-      const normalizedTransaction = transaction.toObject();
-      normalizedTransaction.urunler = (normalizedTransaction.urunler || []).map(
-        (item) => {
-          const bekleyenAdet = parseNumber(
-            item.envanterdeBekleyenAdet !== undefined
-              ? item.envanterdeBekleyenAdet
-              : item.envanterdeMi
-                ? item.adet
-                : 0,
-          );
+    const customerIds = [
+      ...new Set(
+        transactions
+          .map((t) => (t.musteriId ? String(t.musteriId) : ""))
+          .filter((id) => isObjectId(id)),
+      ),
+    ];
+    const customers = customerIds.length
+      ? await Customer.find({ tenantId, _id: { $in: customerIds } }).lean()
+      : [];
+    const customerMap = new Map(customers.map((c) => [String(c._id), customerRef(c)]));
 
-          return {
-            ...item,
-            adet: item.envanterdeMi ? bekleyenAdet : parseNumber(item.adet),
-            envanterdeBekleyenAdet: bekleyenAdet,
-            envanterdeMi: bekleyenAdet > 0,
-          };
-        },
-      );
-      return normalizedTransaction;
-    });
+    const result = transactions
+      .filter((t) => (t.urunler || []).some((line) => pendingQuantity(line) > 0))
+      .map((t) => {
+        const json = t.toJSON();
+        const ref = customerMap.get(String(t.musteriId));
+        return {
+          ...json,
+          musteriId: ref || json.musteriId,
+          urunler: (json.urunler || []).map((line) => {
+            const pending = pendingQuantity(line);
+            return {
+              ...line,
+              adet: line.envanterdeMi ? pending : num(line.adet),
+              envanterdeBekleyenAdet: pending,
+              envanterdeMi: pending > 0,
+            };
+          }),
+        };
+      });
 
-    res.status(200).json(normalizedTransactions);
+    return res.json(result);
   } catch (error) {
-    res.status(500).json({
-      message: "Server error while fetching pending inventory",
-      error: error.message,
-    });
+    return res.status(500).json({ message: error.message });
   }
 };
 
+// POST /api/inventory/deliver
 const deliverInventoryItem = async (req, res) => {
   try {
-    const { transactionId, urunKodu, teslimEdilecekAdet } = req.body;
+    const tenantId = req.user.tenantId;
+    const { transactionId, urunKodu, teslimEdilecekAdet } = req.body || {};
 
     if (!transactionId || !urunKodu || teslimEdilecekAdet === undefined) {
       return res.status(400).json({
-        message: "transactionId, urunKodu and teslimEdilecekAdet are required",
+        message: "transactionId, urunKodu ve teslimEdilecekAdet zorunludur.",
       });
     }
+    if (!isObjectId(transactionId)) {
+      return res.status(400).json({ message: "Geçersiz işlem kimliği." });
+    }
 
-    const transaction = await Transaction.findOne(
-      activeTransactions(req, { _id: transactionId }),
-    );
+    const transaction = await Transaction.findOne({
+      _id: transactionId,
+      tenantId,
+      isDeleted: false,
+    });
     if (!transaction) {
       return res.status(404).json({ message: "Transaction not found" });
     }
 
-    const inventoryItem = transaction.urunler.find(
-      (item) => item.urunKodu === urunKodu,
-    );
-    if (!inventoryItem) {
+    const code = str(urunKodu);
+    const line = (transaction.urunler || []).find((item) => item.urunKodu === code);
+    if (!line) {
       return res.status(404).json({ message: "Inventory item not found" });
     }
 
-    const currentBekleyenAdet = parseNumber(
-      inventoryItem.envanterdeBekleyenAdet !== undefined
-        ? inventoryItem.envanterdeBekleyenAdet
-        : inventoryItem.envanterdeMi
-          ? inventoryItem.adet
-          : 0,
-    );
-    const deliveredAdet = Number(teslimEdilecekAdet);
-
-    if (deliveredAdet <= 0 || deliveredAdet > currentBekleyenAdet) {
-      return res.status(400).json({ message: "Teslim edilecek adet geçersiz" });
+    const pending = pendingQuantity(line);
+    const delivered = Number(teslimEdilecekAdet);
+    if (!(delivered > 0) || delivered > pending) {
+      return res.status(400).json({ message: "Teslim edilecek adet geçersiz." });
     }
 
-    const stock = await Stock.findOne(
-      withTenant(req, { urunKodu }),
-    );
+    const stock = await Stock.findOne({ tenantId, urunKodu: code });
     if (!stock) {
       return res.status(404).json({ message: "Stock not found" });
     }
-
-    const mevcutAdet = parseNumber(stock.adet);
-    const mevcutEnvanterAdedi = parseNumber(stock.envanterdekiAdet);
-
-    if (deliveredAdet > mevcutAdet || deliveredAdet > mevcutEnvanterAdedi) {
-      return res.status(400).json({
-        message: "Stokta teslim edilecek kadar envanter ürünü yok",
-      });
+    if (delivered > num(stock.adet) || delivered > num(stock.envanterdekiAdet)) {
+      return res
+        .status(400)
+        .json({ message: "Stokta teslim edilecek kadar envanter ürünü yok." });
     }
 
-    stock.adet = mevcutAdet - deliveredAdet;
-    stock.envanterdekiAdet = mevcutEnvanterAdedi - deliveredAdet;
-
-    inventoryItem.envanterdeBekleyenAdet = currentBekleyenAdet - deliveredAdet;
-    inventoryItem.envanterdeMi = inventoryItem.envanterdeBekleyenAdet > 0;
-
+    stock.adet = Math.max(0, num(stock.adet) - delivered);
+    stock.envanterdekiAdet = Math.max(0, num(stock.envanterdekiAdet) - delivered);
     await stock.save();
+    await syncProductFromStock(tenantId, stock.urunKodu, stock.adet);
+
+    line.envanterdeBekleyenAdet = Math.max(0, pending - delivered);
+    line.envanterdeMi = line.envanterdeBekleyenAdet > 0;
+    if (!line.envanterdeMi) line.envanterAciklamasi = "";
+    transaction.markModified("urunler");
     await transaction.save();
 
-    res.status(200).json(transaction);
-  } catch (error) {
-    res.status(500).json({
-      message: "Server error while delivering inventory item",
-      error: error.message,
+    logAction(req.user, "STOK_HAREKET", "Transaction", transaction._id, {
+      islem: "ENVANTER_TESLIM",
+      urunKodu: code,
+      teslimEdilenAdet: delivered,
+      musteri: transaction.musteriAdSoyad,
     });
+
+    return res.json(transaction);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
 };
 

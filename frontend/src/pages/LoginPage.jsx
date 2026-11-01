@@ -41,7 +41,6 @@ export default function LoginPage({ onLogin }) {
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
-  const [withDemoData, setWithDemoData] = useState(true);
   const [registerError, setRegisterError] = useState("");
   const [emailSuggestions, setEmailSuggestions] = useState([]);
   const [emailSelectedFromSuggestion, setEmailSelectedFromSuggestion] = useState(false);
@@ -77,7 +76,8 @@ export default function LoginPage({ onLogin }) {
     } catch (error) {
       console.error("Hata Detayı:", error);
       const message =
-        error?.response?.data?.message || "E-posta veya şifre hatalı";
+        error?.response?.data?.message ||
+        "Böyle bir hesap bulunamadı veya şifreniz hatalı.";
       setErrorMessage(message);
     } finally {
       setIsLoading(false);
@@ -158,7 +158,6 @@ export default function LoginPage({ onLogin }) {
         phone: phone.trim(),
         address: address.trim(),
         password: registerPassword,
-        withDemoData,
       });
 
       if (response?.token) {
@@ -290,8 +289,8 @@ export default function LoginPage({ onLogin }) {
                       onChange={(event) => setEmail(event.target.value)}
                       placeholder={
                         activeTab === "admin"
-                          ? "ahmet.yilmaz@tekyonetim.com"
-                          : "mehmet.kaya@tekyonetim.com"
+                          ? "musabarikan@magaza.com"
+                          : "mehmet.kaya@magaza.com"
                       }
                       autoComplete="username"
                       className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
@@ -509,24 +508,6 @@ export default function LoginPage({ onLogin }) {
                     placeholder="Örn: Kızılay Mah. Atatürk Bulvarı No:112, Çankaya / Ankara"
                     className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
                   />
-                </div>
-              </label>
-
-              {/* Demo Veri Seçeneği Checkbox */}
-              <label className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={withDemoData}
-                  onChange={(e) => setWithDemoData(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded accent-blue-600 cursor-pointer"
-                />
-                <div className="text-xs">
-                  <span className="font-semibold text-slate-900 block">
-                    Örnek ürün, müşteri ve işlem verileriyle başlat
-                  </span>
-                  <span className="text-slate-600 mt-0.5 block">
-                    Sistemi hemen test edebilmeniz için hazır beyaz eşya ürünleri, müşteriler ve satış kayıtları yüklenir. Boş mağaza ile başlamak için işareti kaldırabilirsiniz.
-                  </span>
                 </div>
               </label>
 

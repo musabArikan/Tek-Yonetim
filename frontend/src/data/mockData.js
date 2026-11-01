@@ -10,8 +10,8 @@
  * localStorage içinde düz metin tutulur; gerçek bir backend'e geçildiğinde kullanılmaz.
  */
 
-export const DB_VERSION = 2;
-export const STORE_ID = "store_gunes";
+export const DB_VERSION = 3;
+export const STORE_ID = "store_arikan";
 export const DEMO_PASSWORD = "123456";
 
 // ─── Yardımcılar ──────────────────────────────────────────────────────────────
@@ -46,14 +46,14 @@ const paymentMethodMap = {
 const STORE = {
   _id: STORE_ID,
   id: STORE_ID,
-  ad: "Güneş Beyaz Eşya Mağazası",
-  unvan: "Güneş Beyaz Eşya Pazarlama Ltd. Şti.",
-  yetkili: "Ahmet Yılmaz",
+  ad: "Arıkan Mağazası",
+  unvan: "Arıkan Beyaz Eşya Pazarlama Ltd. Şti.",
+  yetkili: "Musab Arıkan",
   adres: "Kızılay Mah. Atatürk Bulvarı No:112, Çankaya / Ankara",
   telefon: "0312 555 01 01",
-  email: "ahmet.yilmaz@tekyonetim.com",
-  kurucuEmail: "ahmet.yilmaz@tekyonetim.com",
-  mailDomain: "tekyonetim.com",
+  email: "musabarikan@magaza.com",
+  kurucuEmail: "musabarikan@magaza.com",
+  mailDomain: "magaza.com",
   vergiDairesi: "Çankaya",
   vergiNo: "1234567890",
   isActive: true,
@@ -88,10 +88,11 @@ const NO_LOCKS = {
 const USER_SPECS = [
   {
     key: "ahmet",
-    ad: "Ahmet",
-    soyad: "Yılmaz",
-    email: "ahmet.yilmaz@tekyonetim.com",
+    ad: "Musab",
+    soyad: "Arıkan",
+    email: "musabarikan@magaza.com",
     role: "admin",
+    isStoreOwner: true,
     permissions: ALL_PERMISSIONS,
     createdAt: "2024-01-02T09:10",
   },
@@ -99,8 +100,9 @@ const USER_SPECS = [
     key: "ayse",
     ad: "Ayşe",
     soyad: "Demir",
-    email: "ayse.demir@tekyonetim.com",
+    email: "ayse.demir@magaza.com",
     role: "yonetici",
+    isStoreOwner: false,
     permissions: ALL_PERMISSIONS,
     createdAt: "2024-01-02T09:20",
   },
@@ -108,8 +110,9 @@ const USER_SPECS = [
     key: "mehmet",
     ad: "Mehmet",
     soyad: "Kaya",
-    email: "mehmet.kaya@tekyonetim.com",
+    email: "mehmet.kaya@magaza.com",
     role: "kasiyer",
+    isStoreOwner: false,
     permissions: {
       ...NO_PERMISSIONS,
       satisYapabilir: true,
@@ -121,8 +124,9 @@ const USER_SPECS = [
     key: "zeynep",
     ad: "Zeynep",
     soyad: "Çelik",
-    email: "zeynep.celik@tekyonetim.com",
+    email: "zeynep.celik@magaza.com",
     role: "depo_sorumlusu",
+    isStoreOwner: false,
     permissions: {
       ...NO_PERMISSIONS,
       stokDuzenleyebilir: true,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Plus, Check, X } from "lucide-react";
 import { SelectInput } from "./FormField";
+import api from "../../utils/api";
 import { localDb, DEFAULT_PAYMENT_METHODS } from "../../utils/localDb";
 
 const ADD_NEW_VALUE = "__ADD_NEW_PAYMENT_METHOD__";
@@ -42,40 +43,32 @@ export default function PaymentMethodSelect({
 
   useEffect(() => {
     let isMounted = true;
-    try {
-      const raw = localDb?.paymentMethods?.list?.();
-      if (raw && typeof raw.then === "function") {
-        raw
-          .then((resolved) => {
-            if (!isMounted) return;
-            const list =
-              Array.isArray(resolved) && resolved.length > 0
-                ? resolved
-                : [...fallbackMethods];
-            if (value && !list.includes(value) && value !== ADD_NEW_VALUE) {
-              setMethods([...list, value]);
-            } else {
-              setMethods(list);
-            }
-          })
-          .catch(() => {
-            if (isMounted) setMethods([...fallbackMethods]);
-          });
-        return () => {
-          isMounted = false;
-        };
-      }
-
+    const applyList = (rawList) => {
+      if (!isMounted) return;
       const list =
-        Array.isArray(raw) && raw.length > 0 ? raw : [...fallbackMethods];
+        Array.isArray(rawList) && rawList.length > 0
+          ? rawList
+          : [...fallbackMethods];
       if (value && !list.includes(value) && value !== ADD_NEW_VALUE) {
         setMethods([...list, value]);
       } else {
         setMethods(list);
       }
-    } catch {
-      setMethods([...fallbackMethods]);
-    }
+    };
+
+    api
+      .get("/store/payment-methods")
+      .then((res) => {
+        if (Array.isArray(res?.data) && res.data.length > 0) {
+          applyList(res.data);
+        } else {
+          applyList(readSafeMethods());
+        }
+      })
+      .catch(() => {
+        applyList(readSafeMethods());
+      });
+
     return () => {
       isMounted = false;
     };
@@ -108,13 +101,28 @@ export default function PaymentMethodSelect({
     const cleaned = String(newMethodName || "").trim();
     if (!cleaned) return;
     try {
-      const rawUpdated = await Promise.resolve(
+      let updatedList = null;
+      try {
+        const res = await api.post("/store/payment-methods", { name: cleaned });
+        if (Array.isArray(res?.data?.methods)) {
+          updatedList = res.data.methods;
+        } else if (Array.isArray(res?.data)) {
+          updatedList = res.data;
+        }
+      } catch {
+        // Çevrimdışı durumda lokal listeye kaydet
+      }
+
+      const localUpdated = await Promise.resolve(
         localDb?.paymentMethods?.add?.(cleaned),
       );
       const updated =
-        Array.isArray(rawUpdated) && rawUpdated.length > 0
-          ? rawUpdated
-          : [...new Set([...safeMethods, cleaned])];
+        Array.isArray(updatedList) && updatedList.length > 0
+          ? updatedList
+          : Array.isArray(localUpdated) && localUpdated.length > 0
+            ? localUpdated
+            : [...new Set([...safeMethods, cleaned])];
+
       setMethods(updated);
       const matched =
         updated.find(

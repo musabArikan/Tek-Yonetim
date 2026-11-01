@@ -1,19 +1,43 @@
+import api from "../utils/api.js";
 import { localDb } from "../utils/localDb.js";
+import { callSilent } from "./serviceUtils.js";
+
+const SCOPE_MAP = {
+  personeller: "userManagement",
+  userManagement: "userManagement",
+  raporlar: "reports",
+  reports: "reports",
+  magazam: "myStore",
+  myStore: "myStore",
+};
 
 /**
- * Sayfa re-auth doğrulaması: kullanıcının pagePasswords[page] ile şifreyi karşılaştırır.
- * @param {string} page - "finans" | "stok" | "raporlar" | "envanter" | "transferler"
- * @param {string} password
- * @returns {{ authorized: boolean, noPassword?: boolean }}
+ * Sayfa re-auth doğrulaması.
  */
 export const verifyPagePassword = (page, password) =>
-  localDb.auth.verifyPagePassword({ page, password });
+  callSilent(
+    async () => {
+      const scope = SCOPE_MAP[page] || "userManagement";
+      const { data } = await api.post("/auth/re-auth", { scope, password });
+      return { authorized: Boolean(data?.verified), ...data };
+    },
+    () => localDb.auth.verifyPagePassword({ page, password }),
+  );
 
 /**
  * Admin: bir kullanıcı için sayfa şifresi atar (boş string = kilit kaldır).
- * @param {string} userId
- * @param {string} page
- * @param {string} password
  */
 export const setUserPagePassword = (userId, page, password) =>
-  localDb.auth.setPagePassword(userId, { page, password });
+  callSilent(
+    async () => {
+      const scope = SCOPE_MAP[page] || "userManagement";
+      const clear = !password || String(password).trim() === "";
+      const { data } = await api.patch(`/users/${userId}/page-password`, {
+        scope,
+        password: password || "",
+        clear,
+      });
+      return data;
+    },
+    () => localDb.auth.setPagePassword(userId, { page, password }),
+  );

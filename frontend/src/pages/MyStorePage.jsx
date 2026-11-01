@@ -426,12 +426,12 @@ export default function MyStorePage({ onSessionRefresh }) {
   }, []);
 
   const lockedFounderEmail =
-    storeProfile?.kurucuEmail || storeProfile?.email || "ahmet.yilmaz@tekyonetim.com";
+    storeProfile?.kurucuEmail || storeProfile?.email || "musabarikan@magaza.com";
   const lockedMailDomain =
     storeProfile?.mailDomain ||
     (lockedFounderEmail.includes("@")
       ? lockedFounderEmail.split("@")[1]
-      : "tekyonetim.com");
+      : "magaza.com");
 
   return (
     <div className="space-y-6">

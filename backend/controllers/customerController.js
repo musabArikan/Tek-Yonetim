@@ -1,197 +1,230 @@
-const mongoose = require("mongoose");
 const Customer = require("../models/Customer");
-const Counter = require("../models/Counter");
 const Transaction = require("../models/Transaction");
-const { createTransactionForCustomer } = require("./transactionController");
-const {
-  getTenantId,
-  getUserId,
-  withTenant,
-  activeCustomers,
-} = require("../utils/tenantScope");
+const Collection = require("../models/Collection");
+const Stock = require("../models/Stock");
+const { str, num, isObjectId, normalizeDate } = require("../utils/helpers");
+const { customerRef } = require("../utils/serializers");
+const { createTransactionForCustomer } = require("../services/saleService");
 const { logAction } = require("../utils/auditLogger");
 
-const createDocument = async (Model, payload, session) => {
-  if (!session) {
-    return Model.create(payload);
-  }
-
-  const [document] = await Model.create([payload], { session });
-  return document;
-};
-
-const createCustomer = async (req, res) => {
-  const session = await mongoose.startSession();
-
-  try {
-    const { ad, soyad, tcKimlik, telefon, adres, toplamKalanBakiye, satis } =
-      req.body;
-    const normalizedAd = (ad || "").trim();
-    const normalizedSoyad = (soyad || "").trim();
-    const normalizedTelefon = (telefon || "").trim();
-    const normalizedAdres = (adres || "").trim();
-    const normalizedTcKimlik = (tcKimlik || "").trim();
-    const hasSalePayload =
-      satis && typeof satis === "object" && !Array.isArray(satis);
-
-    if (!normalizedAd || !normalizedSoyad || !normalizedTelefon) {
-      return res
-        .status(400)
-        .json({ message: "Ad, soyad and telefon are required" });
-    }
-
-    let responsePayload = null;
-
-    await session.withTransaction(async () => {
-      if (normalizedTcKimlik) {
-        const existingCustomer = await Customer.findOne(
-          activeCustomers(req, { tcKimlik: normalizedTcKimlik }),
-        ).session(session);
-
-        if (existingCustomer) {
-          throw Object.assign(new Error("Bu TC ile zaten kayıt var"), {
-            statusCode: 400,
-          });
-        }
-      }
-
-      const lastCustomer = await Customer.findOne({ tenantId: getTenantId(req) })
-        .sort({ musteriNo: -1 })
-        .session(session);
-
-      const nextMusteriNo = lastCustomer && lastCustomer.musteriNo ? lastCustomer.musteriNo + 1 : 1;
-
-      const customer = await createDocument(
-        Customer,
-        {
-          tenantId: getTenantId(req),
-          createdBy: getUserId(req),
-          ad: normalizedAd,
-          soyad: normalizedSoyad,
-          tcKimlik: normalizedTcKimlik,
-          telefon: normalizedTelefon,
-          musteriNo: nextMusteriNo,
-          adres: normalizedAdres,
-          toplamKalanBakiye: toplamKalanBakiye || 0,
-        },
-        session,
-      );
-
-      let transaction = null;
-      if (hasSalePayload) {
-        transaction = await createTransactionForCustomer({
-          customer,
-          payload: satis,
-          session,
-          tenantId: getTenantId(req),
-          createdBy: getUserId(req),
-        });
-      }
-
-      responsePayload = hasSalePayload ? { customer, transaction } : customer;
-    });
-
-    // Audit log
-    const customerData = responsePayload?.customer || responsePayload;
-    logAction(req, "MUSTERI_EKLE", "Customer", customerData?._id, {
-      ad: normalizedAd,
-      soyad: normalizedSoyad,
-      userId: req.user?._id || req.user?.userId,
-      tenantId: req.user?.tenantId
-    });
-    
-    return res.status(201).json(responsePayload);
-  } catch (error) {
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({ message: error.message });
-    }
-
-    if (error.name === "ValidationError") {
-      return res.status(400).json({
-        message: Object.values(error.errors)
-          .map((item) => item.message)
-          .join(", "),
-      });
-    }
-
-    res.status(500).json({ error: error.message || "Bilinmeyen bir sunucu hatası oluştu" });
-  } finally {
-    await session.endSession();
-  }
-};
-
+// GET /api/customers
 const getCustomers = async (req, res) => {
   try {
-    const customers = await Customer.find(activeCustomers(req)).sort({
-      createdAt: -1,
-    });
-    res.status(200).json(customers);
+    const query = { tenantId: req.user.tenantId, isDeleted: false };
+    if (String(req.query?.onlyDebtors) === "true") {
+      query.toplamKalanBakiye = { $gt: 0 };
+    }
+    const customers = await Customer.find(query).sort({ createdAt: -1, musteriNo: -1 });
+    return res.json(customers);
   } catch (error) {
-    res.status(500).json({
-      message: "Server error while fetching customers",
-      error: error.message,
-    });
+    return res.status(500).json({ message: error.message });
   }
 };
 
+// GET /api/customers/:id
 const getCustomerById = async (req, res) => {
   try {
-    const customer = await Customer.findOne(
-      activeCustomers(req, { _id: req.params.id }),
-    );
-
+    if (!isObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Geçersiz müşteri kimliği." });
+    }
+    const customer = await Customer.findOne({
+      _id: req.params.id,
+      tenantId: req.user.tenantId,
+      isDeleted: false,
+    });
     if (!customer) {
       return res.status(404).json({ message: "Customer not found" });
     }
-
-    res.status(200).json(customer);
+    return res.json(customer);
   } catch (error) {
-    res.status(500).json({
-      message: "Server error while fetching customer",
-      error: error.message,
-    });
+    return res.status(500).json({ message: error.message });
   }
 };
 
+// POST /api/customers
+const createCustomer = async (req, res) => {
+  let createdCustomer = null;
+  try {
+    const ad = str(req.body?.ad);
+    const soyad = str(req.body?.soyad);
+    const telefon = str(req.body?.telefon);
+    const tcKimlik = str(req.body?.tcKimlik || req.body?.tc);
+    const adres = str(req.body?.adres);
+
+    if (!ad || !soyad || !telefon) {
+      return res.status(400).json({ message: "Ad, soyad ve telefon zorunludur." });
+    }
+
+    if (tcKimlik) {
+      const duplicateTc = await Customer.findOne({
+        tenantId: req.user.tenantId,
+        tcKimlik,
+        isDeleted: false,
+      });
+      if (duplicateTc) {
+        return res.status(400).json({ message: "Bu TC Kimlik numarası ile zaten kayıt var." });
+      }
+    }
+
+    const lastCustomer = await Customer.findOne({ tenantId: req.user.tenantId })
+      .sort({ musteriNo: -1 })
+      .select("musteriNo");
+    const nextMusteriNo = Math.max(1000, num(lastCustomer?.musteriNo, 1000)) + 1;
+    const registeredAt = normalizeDate(req.body?.satis?.tarih || req.body?.tarih);
+    const initialBalance = Math.max(0, num(req.body?.toplamKalanBakiye, 0));
+
+    createdCustomer = await Customer.create({
+      tenantId: req.user.tenantId,
+      createdBy: req.user.userId,
+      musteriNo: nextMusteriNo,
+      ad,
+      soyad,
+      tcKimlik,
+      tc: tcKimlik,
+      telefon,
+      adres,
+      toplamKalanBakiye: initialBalance,
+      kalanBorc: initialBalance,
+      installments: [],
+      kayitTarihi: registeredAt,
+      sonIslemTarihi: registeredAt,
+    });
+
+    logAction(req.user, "MUSTERI_EKLE", "Customer", createdCustomer._id, {
+      ad,
+      soyad,
+      musteriNo: createdCustomer.musteriNo,
+    });
+
+    const hasSale =
+      req.body?.satis &&
+      typeof req.body.satis === "object" &&
+      !Array.isArray(req.body.satis);
+
+    if (hasSale) {
+      try {
+        const transaction = await createTransactionForCustomer({
+          customer: createdCustomer,
+          payload: req.body.satis,
+          actor: req.user,
+        });
+        const refreshedCustomer = await Customer.findById(createdCustomer._id);
+        return res.status(201).json({
+          customer: refreshedCustomer || createdCustomer,
+          transaction,
+        });
+      } catch (saleError) {
+        await Customer.deleteOne({ _id: createdCustomer._id });
+        throw saleError;
+      }
+    }
+
+    return res.status(201).json(createdCustomer);
+  } catch (error) {
+    const status = error.status || 500;
+    return res.status(status).json({ message: error.message });
+  }
+};
+
+// DELETE /api/customers/:id
 const deleteCustomer = async (req, res) => {
   try {
-    const customer = await Customer.findOne(
-      activeCustomers(req, { _id: req.params.id }),
-    );
+    if (!isObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Geçersiz müşteri kimliği." });
+    }
 
+    const customer = await Customer.findOne({
+      _id: req.params.id,
+      tenantId: req.user.tenantId,
+      isDeleted: false,
+    });
     if (!customer) {
       return res.status(404).json({ message: "Customer not found" });
     }
 
-    const deletedBy = getUserId(req);
-
-    await Transaction.updateMany(withTenant(req, { musteriId: customer._id, isDeleted: false }), {
-      isDeleted: true,
-      deletedBy,
+    const activeTransactions = await Transaction.find({
+      tenantId: req.user.tenantId,
+      musteriId: customer._id,
+      isDeleted: false,
     });
+
+    for (const tx of activeTransactions) {
+      for (const line of tx.urunler || []) {
+        const pending = num(line.envanterdeBekleyenAdet, 0);
+        if (pending > 0 && line.urunKodu) {
+          const stockDoc = await Stock.findOne({
+            tenantId: req.user.tenantId,
+            urunKodu: line.urunKodu,
+          });
+          if (stockDoc) {
+            stockDoc.envanterdekiAdet = Math.max(0, num(stockDoc.envanterdekiAdet, 0) - pending);
+            await stockDoc.save();
+          }
+        }
+      }
+      tx.isDeleted = true;
+      tx.deletedBy = req.user.userId;
+      await tx.save();
+    }
+
+    await Collection.updateMany(
+      { tenantId: req.user.tenantId, customerId: customer._id, isDeleted: false },
+      { $set: { isDeleted: true } },
+    );
 
     customer.isDeleted = true;
-    customer.deletedBy = deletedBy;
+    customer.deletedBy = req.user.userId;
     await customer.save();
 
-    // Audit log
-    logAction(req, "MUSTERI_SIL", "Customer", customer._id, {
+    logAction(req.user, "MUSTERI_SIL", "Customer", customer._id, {
       ad: customer.ad,
       soyad: customer.soyad,
+      musteriNo: customer.musteriNo,
     });
 
-    res.status(200).json({ message: "Customer and related records deleted" });
+    return res.json({ message: "Customer and related records deleted" });
   } catch (error) {
-    res.status(500).json({
-      message: "Server error while deleting customer",
-      error: error.message,
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+// GET /api/customers/:id/transactions
+const getCustomerTransactions = async (req, res) => {
+  try {
+    if (!isObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Geçersiz müşteri kimliği." });
+    }
+    const customer = await Customer.findOne({
+      _id: req.params.id,
+      tenantId: req.user.tenantId,
+      isDeleted: false,
     });
+    if (!customer) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
+    const list = await Transaction.find({
+      tenantId: req.user.tenantId,
+      musteriId: customer._id,
+      isDeleted: false,
+    }).sort({ tarih: -1, createdAt: -1 });
+
+    const ref = customerRef(customer);
+    return res.json(
+      list.map((tx) => {
+        const json = tx.toJSON();
+        return { ...json, musteriId: ref };
+      }),
+    );
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
 };
 
 module.exports = {
-  createCustomer,
   getCustomers,
   getCustomerById,
+  createCustomer,
   deleteCustomer,
+  getCustomerTransactions,
 };

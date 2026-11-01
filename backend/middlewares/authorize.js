@@ -1,53 +1,41 @@
-const normalizeRequiredPermissions = (requiredPermissions, req) => {
-  if (!requiredPermissions) return [];
-
-  const resolvedPermissions =
-    typeof requiredPermissions === "function"
-      ? requiredPermissions(req)
-      : requiredPermissions;
-
-  if (!resolvedPermissions) return [];
-  return Array.isArray(resolvedPermissions)
-    ? resolvedPermissions.filter(Boolean)
-    : [resolvedPermissions];
+const PAGE_ALIASES = {
+  myStore: ["magazam", "myStore"],
+  magazam: ["magazam", "myStore"],
+  reports: ["raporlar", "reports"],
+  raporlar: ["raporlar", "reports"],
+  userManagement: ["personeller", "userManagement"],
+  personeller: ["personeller", "userManagement"],
 };
 
-const authorize = (requiredPermissions) => (req, res, next) => {
+const forbid = (res, message) => res.status(403).json({ message });
+
+const requirePermission = (...keys) => (req, res, next) => {
+  if (req.user?.role === "admin" || req.user?.isStoreOwner) return next();
   const permissions = req.user?.permissions || {};
-  const normalizedPermissions = normalizeRequiredPermissions(
-    requiredPermissions,
-    req,
-  );
-
-  if (normalizedPermissions.length === 0) {
-    return next();
-  }
-
-  const isAllowed = normalizedPermissions.every(
-    (permissionKey) => permissions[permissionKey],
-  );
-
-  if (!isAllowed) {
-    return res.status(403).json({
-      message: "Bu işlem için yetkiniz yok",
-    });
-  }
-
-  next();
+  if (keys.every((key) => permissions[key])) return next();
+  return forbid(res, "Bu işlem için yetkiniz yok");
 };
 
-const requireRole = (requiredRole) => (req, res, next) => {
-  const allowedRoles = Array.isArray(requiredRole)
-    ? requiredRole
-    : [requiredRole];
-
-  if (!allowedRoles.includes(req.user?.role)) {
-    return res.status(403).json({
-      message: "Bu işlem için rol yetkiniz yok",
-    });
-  }
-
-  next();
+const requirePage = (...pages) => (req, res, next) => {
+  if (req.user?.role === "admin" || req.user?.isStoreOwner) return next();
+  const allowed = req.user?.allowedPages || {};
+  const expanded = pages.flatMap((p) => PAGE_ALIASES[p] || [p]);
+  if (expanded.some((page) => allowed[page])) return next();
+  return forbid(res, "Yetkisiz Erişim: Bu sayfayı görüntüleme yetkiniz yok.");
 };
 
-module.exports = { authorize, requireRole };
+const requireRole = (...requiredRoles) => (req, res, next) => {
+  if (req.user?.role === "admin" || req.user?.isStoreOwner) return next();
+  const roles = requiredRoles.flat();
+  if (roles.includes(req.user?.role)) return next();
+  return forbid(res, "Bu işlem için rol yetkiniz yok");
+};
+
+module.exports = {
+  requirePermission,
+  requirePage,
+  requireRole,
+  authorize: requirePermission,
+  authorizePage: requirePage,
+  authorizeRole: requireRole,
+};

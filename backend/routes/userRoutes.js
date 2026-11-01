@@ -1,35 +1,23 @@
 const express = require("express");
+const router = express.Router();
+const authMiddleware = require("../middlewares/authMiddleware");
+const { authorizeRole } = require("../middlewares/authorize");
 const {
-  listUsers,
+  getUsers,
   createUser,
   updateUser,
+  updateUserPassword,
+  updateUserPagePassword,
   deleteUser,
-  changePassword,
 } = require("../controllers/userController");
-const { setPagePassword } = require("../controllers/reAuthController");
-const { requireAuth } = require("../middlewares/authMiddleware");
-const { requireRole } = require("../middlewares/authorize");
 
-const router = express.Router();
+router.use(authMiddleware);
 
-const adminOrManager = requireRole(["admin", "yonetici"]);
-
-router
-  .route("/")
-  .get(requireAuth, adminOrManager, listUsers)
-  .post(requireAuth, adminOrManager, createUser);
-
-router
-  .route("/:id")
-  .put(requireAuth, adminOrManager, updateUser)
-  .delete(requireAuth, adminOrManager, deleteUser);
-
-router
-  .route("/:id/password")
-  .patch(requireAuth, adminOrManager, changePassword);
-
-router
-  .route("/:id/page-password")
-  .patch(requireAuth, adminOrManager, setPagePassword);
+router.get("/", getUsers);
+router.post("/", authorizeRole("admin"), createUser);
+router.put("/:id", authorizeRole("admin"), updateUser);
+router.patch("/:id/password", authorizeRole("admin"), updateUserPassword);
+router.patch("/:id/page-password", authorizeRole("admin"), updateUserPagePassword);
+router.delete("/:id", authorizeRole("admin"), deleteUser);
 
 module.exports = router;

@@ -1,16 +1,15 @@
 const express = require("express");
+const router = express.Router();
+const authMiddleware = require("../middlewares/authMiddleware");
 const {
   getPendingInventory,
   deliverInventoryItem,
 } = require("../controllers/inventoryController");
-const { requireAuth } = require("../middlewares/authMiddleware");
-const { authorize } = require("../middlewares/authorize");
 
-const router = express.Router();
+router.use(authMiddleware);
 
-router.route("/").get(requireAuth, getPendingInventory);
-router
-  .route("/deliver")
-  .put(requireAuth, authorize("envanterDuzenleyebilir"), deliverInventoryItem);
+router.get("/", getPendingInventory);
+router.get("/pending", getPendingInventory);
+router.post("/deliver", deliverInventoryItem);
 
 module.exports = router;
