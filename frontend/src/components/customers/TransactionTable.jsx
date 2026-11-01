@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { formatCurrency, formatDate } from "../../utils/formatters";
 import { computeRunningBalances } from "../../utils/transactions";
 import { odemeYontemleri } from "../../data/fakeData";
+import { localDb } from "../../utils/localDb";
 
 function TransactionBadge({ type, odemeYontemi }) {
   const method = odemeYontemi || "Veresiye";
@@ -81,8 +82,17 @@ export default function TransactionTable({ transactions = [], title = "İşlem v
   const [paymentFilter, setPaymentFilter] = useState("all");
 
   const paymentOptions = useMemo(() => {
-    const fromTx = transactions.map((t) => t.odemeYontemi).filter(Boolean);
-    return [...new Set([...odemeYontemleri, ...fromTx])].sort();
+    const safeTx = Array.isArray(transactions) ? transactions : [];
+    const fromTx = safeTx.map((t) => t?.odemeYontemi).filter(Boolean);
+    let fromStore = [];
+    try {
+      const list = localDb?.paymentMethods?.list?.();
+      fromStore = Array.isArray(list) ? list : odemeYontemleri;
+    } catch {
+      fromStore = odemeYontemleri;
+    }
+    const base = Array.isArray(odemeYontemleri) ? odemeYontemleri : [];
+    return [...new Set([...base, ...fromStore, ...fromTx])];
   }, [transactions]);
 
   const rows = useMemo(() => {

@@ -1,14 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import Modal from "./Modal";
-import DefterInput from "../ui/DefterInput";
 import ProductLinesField from "../ui/ProductLinesField";
+import PaymentMethodSelect from "../ui/PaymentMethodSelect";
 import {
   FormField,
   TextInput,
-  SelectInput,
   TextAreaInput,
 } from "../ui/FormField";
-import { odemeYontemleri } from "../../data/fakeData";
 import {
   validateTC,
   validatePhone,
@@ -34,7 +32,6 @@ const emptyForm = {
   odemeYontemi: "Veresiye",
   toplamTutar: "",
   pesinat: "",
-  kayitDefteri: "",
 };
 
 export default function NewCustomerSaleModal({
@@ -42,7 +39,6 @@ export default function NewCustomerSaleModal({
   onClose,
   onSubmit,
   stockOptions,
-  defterSuggestions,
   isSubmitting = false,
   submitError = "",
 }) {
@@ -92,10 +88,6 @@ export default function NewCustomerSaleModal({
       ["odemeYontemi", validateRequired(form.odemeYontemi, "Ödeme yöntemi")],
       ["toplamTutar", validateAmount(form.toplamTutar, "Toplam tutar")],
       ["pesinat", validatePesinat(form.pesinat, form.toplamTutar)],
-      [
-        "kayitDefteri",
-        validateRequired(form.kayitDefteri, "Kayıt edilen defter"),
-      ],
     ];
     checks.forEach(([field, err]) => {
       if (err) newErrors[field] = err;
@@ -204,17 +196,11 @@ export default function NewCustomerSaleModal({
               error={errors.odemeYontemi}
               required
             >
-              <SelectInput
+              <PaymentMethodSelect
                 value={form.odemeYontemi}
                 onChange={updateField("odemeYontemi")}
                 error={errors.odemeYontemi}
-              >
-                {odemeYontemleri.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </SelectInput>
+              />
             </FormField>
             <FormField
               label="Toplam Satış (₺)"
@@ -250,12 +236,6 @@ export default function NewCustomerSaleModal({
                 className="bg-surface-container text-on-surface-variant cursor-not-allowed"
               />
             </FormField>
-            <DefterInput
-              value={form.kayitDefteri}
-              onChange={updateField("kayitDefteri")}
-              suggestions={defterSuggestions}
-              error={errors.kayitDefteri}
-            />
           </div>
         </div>
 

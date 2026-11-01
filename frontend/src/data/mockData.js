@@ -51,7 +51,9 @@ const STORE = {
   yetkili: "Ahmet Yılmaz",
   adres: "Kızılay Mah. Atatürk Bulvarı No:112, Çankaya / Ankara",
   telefon: "0312 555 01 01",
-  email: "info@gunesbeyazesya.com",
+  email: "ahmet.yilmaz@tekyonetim.com",
+  kurucuEmail: "ahmet.yilmaz@tekyonetim.com",
+  mailDomain: "tekyonetim.com",
   vergiDairesi: "Çankaya",
   vergiNo: "1234567890",
   isActive: true,
@@ -191,48 +193,48 @@ const CUSTOMER_SPECS = [
 
 const TX_SPECS = [
   // ── 2023 ──
-  { d: "2023-11-15T11:20", c: 1002, by: "ahmet", type: "S", items: [["BM4282EG", 1]], pes: 8000, pay: "Nakit", defter: "Mağaza Defteri" },
-  { d: "2023-12-18T14:45", c: 1002, by: "mehmet", type: "T", amount: 6600, pay: "Nakit", defter: "Mağaza Defteri", not: "2023 kalan borç kapatıldı" },
+  { d: "2023-11-15T11:20", c: 1002, by: "ahmet", type: "S", items: [["BM4282EG", 1]], pes: 8000, pay: "Nakit" },
+  { d: "2023-12-18T14:45", c: 1002, by: "mehmet", type: "T", amount: 6600, pay: "Nakit", not: "2023 kalan borç kapatıldı" },
 
   // ── 2024 ──
-  { d: "2024-01-12T10:35", c: 1001, by: "mehmet", type: "S", items: [["KGN86AI42N", 1]], pes: 15000, pay: "Nakit", defter: "Mağaza Defteri" },
-  { d: "2024-01-20T16:40", c: 1002, by: "ayse", type: "S", items: [["CM10120TR", 1]], pes: 16900, pay: "Kredi Kartı", defter: "Mağaza Defteri" },
-  { d: "2024-02-03T12:15", c: 1003, by: "mehmet", type: "S", items: [["SMS4IKI51T", 1]], pes: 10000, pay: "Nakit", defter: "Ana Defter" },
-  { d: "2024-02-09T14:20", c: 1001, by: "mehmet", type: "T", amount: 8000, pay: "Havale", defter: "Mağaza Defteri", not: "Havale ile kısmi ödeme" },
-  { d: "2024-03-15T11:05", c: 1001, by: "ayse", type: "T", amount: 5500, pay: "Nakit", defter: "Mağaza Defteri", not: "Kalan borç kapatıldı" },
-  { d: "2024-03-18T09:50", c: 1004, by: "ahmet", type: "S", items: [["HBF113BR0T-SET", 1]], pes: 20000, pay: "Havale", defter: "Ana Defter" },
-  { d: "2024-04-11T15:30", c: 1003, by: "ahmet", type: "T", amount: 7200, pay: "Nakit", defter: "Ana Defter", not: "Kalan borç kapatıldı" },
-  { d: "2024-05-20T13:10", c: 1004, by: "mehmet", type: "T", amount: 12900, pay: "Havale", defter: "Ana Defter", not: "Kalan borç kapatıldı" },
-  { d: "2024-06-05T17:25", c: 1005, by: "ayse", type: "S", items: [["WAN24180TR", 1], ["BM4282EG", 1]], pes: 12000, pay: "Kredi Kartı", defter: "Mağaza Defteri" },
-  { d: "2024-09-14T11:45", c: 1005, by: "mehmet", type: "T", amount: 10000, pay: "Nakit", defter: "Mağaza Defteri" },
-  { d: "2024-12-02T10:20", c: 1005, by: "ayse", type: "T", amount: 8000, pay: "Havale", defter: "Mağaza Defteri", not: "Kalan borç kapatıldı" },
+  { d: "2024-01-12T10:35", c: 1001, by: "mehmet", type: "S", items: [["KGN86AI42N", 1]], pes: 15000, pay: "Nakit" },
+  { d: "2024-01-20T16:40", c: 1002, by: "ayse", type: "S", items: [["CM10120TR", 1]], pes: 16900, pay: "Kredi Kartı" },
+  { d: "2024-02-03T12:15", c: 1003, by: "mehmet", type: "S", items: [["SMS4IKI51T", 1]], pes: 10000, pay: "Nakit" },
+  { d: "2024-02-09T14:20", c: 1001, by: "mehmet", type: "T", amount: 8000, pay: "Havale", not: "Havale ile kısmi ödeme" },
+  { d: "2024-03-15T11:05", c: 1001, by: "ayse", type: "T", amount: 5500, pay: "Nakit", not: "Kalan borç kapatıldı" },
+  { d: "2024-03-18T09:50", c: 1004, by: "ahmet", type: "S", items: [["HBF113BR0T-SET", 1]], pes: 20000, pay: "Havale" },
+  { d: "2024-04-11T15:30", c: 1003, by: "ahmet", type: "T", amount: 7200, pay: "Nakit", not: "Kalan borç kapatıldı" },
+  { d: "2024-05-20T13:10", c: 1004, by: "mehmet", type: "T", amount: 12900, pay: "Havale", not: "Kalan borç kapatıldı" },
+  { d: "2024-06-05T17:25", c: 1005, by: "ayse", type: "S", items: [["WAN24180TR", 1], ["BM4282EG", 1]], pes: 12000, pay: "Kredi Kartı" },
+  { d: "2024-09-14T11:45", c: 1005, by: "mehmet", type: "T", amount: 10000, pay: "Nakit" },
+  { d: "2024-12-02T10:20", c: 1005, by: "ayse", type: "T", amount: 8000, pay: "Havale", not: "Kalan borç kapatıldı" },
 
   // ── 2025 ──
-  { d: "2025-02-10T11:30", c: 1006, by: "mehmet", type: "S", items: [["WM14N2E0TR", 1], ["DVL6020X", 1]], pes: 10000, pay: "Nakit", defter: "Mağaza Defteri" },
-  { d: "2025-02-14T14:05", c: 1007, by: "ayse", type: "S", items: [["KG49NXIF0N", 1], ["WT47XM00TR", 1]], pes: 20000, pay: "Kredi Kartı", defter: "Ana Defter" },
-  { d: "2025-03-28T15:40", c: 1006, by: "mehmet", type: "T", amount: 8000, pay: "Nakit", defter: "Mağaza Defteri" },
-  { d: "2025-05-22T10:10", c: 1008, by: "ahmet", type: "S", items: [["KGN39VIEB", 1]], pes: 24900, pay: "Havale", defter: "Ana Defter" },
-  { d: "2025-06-16T12:00", c: 1006, by: "ahmet", type: "T", amount: 8900, pay: "Kredi Kartı", defter: "Mağaza Defteri", not: "Kalan borç kapatıldı" },
-  { d: "2025-07-09T16:30", c: 1007, by: "mehmet", type: "T", amount: 12000, pay: "Havale", defter: "Ana Defter" },
-  { d: "2025-09-08T13:25", c: 1009, by: "mehmet", type: "S", items: [["BD2056W3VN", 1], ["KMP8120TR", 1]], pes: 15000, pay: "Nakit", defter: "Toptan Defter" },
-  { d: "2025-11-30T11:50", c: 1010, by: "ayse", type: "S", items: [["ASP3000X-SET", 1]], pes: 27500, pay: "Kredi Kartı", defter: "Mağaza Defteri" },
-  { d: "2025-12-18T14:15", c: 1007, by: "ahmet", type: "T", amount: 6000, pay: "Nakit", defter: "Ana Defter" },
-  { d: "2025-12-22T10:40", c: 1009, by: "mehmet", type: "T", amount: 5000, pay: "Nakit", defter: "Toptan Defter" },
+  { d: "2025-02-10T11:30", c: 1006, by: "mehmet", type: "S", items: [["WM14N2E0TR", 1], ["DVL6020X", 1]], pes: 10000, pay: "Nakit" },
+  { d: "2025-02-14T14:05", c: 1007, by: "ayse", type: "S", items: [["KG49NXIF0N", 1], ["WT47XM00TR", 1]], pes: 20000, pay: "Kredi Kartı" },
+  { d: "2025-03-28T15:40", c: 1006, by: "mehmet", type: "T", amount: 8000, pay: "Nakit" },
+  { d: "2025-05-22T10:10", c: 1008, by: "ahmet", type: "S", items: [["KGN39VIEB", 1]], pes: 24900, pay: "Havale" },
+  { d: "2025-06-16T12:00", c: 1006, by: "ahmet", type: "T", amount: 8900, pay: "Kredi Kartı", not: "Kalan borç kapatıldı" },
+  { d: "2025-07-09T16:30", c: 1007, by: "mehmet", type: "T", amount: 12000, pay: "Havale" },
+  { d: "2025-09-08T13:25", c: 1009, by: "mehmet", type: "S", items: [["BD2056W3VN", 1], ["KMP8120TR", 1]], pes: 15000, pay: "Nakit" },
+  { d: "2025-11-30T11:50", c: 1010, by: "ayse", type: "S", items: [["ASP3000X-SET", 1]], pes: 27500, pay: "Kredi Kartı" },
+  { d: "2025-12-18T14:15", c: 1007, by: "ahmet", type: "T", amount: 6000, pay: "Nakit" },
+  { d: "2025-12-22T10:40", c: 1009, by: "mehmet", type: "T", amount: 5000, pay: "Nakit" },
 
   // ── 2026 (Eylül – Ekim) ──
-  { d: "2026-09-02T10:15", c: 1011, by: "mehmet", type: "S", items: [["WGA254A0TR", 2, 2, "Ev tadilatı bitene kadar depoda bekleyecek"]], pes: 15000, pay: "Nakit", defter: "Mağaza Defteri" },
-  { d: "2026-09-09T15:55", c: 1012, by: "ayse", type: "S", items: [["KGN86AI42N", 1, 1, "Yeni eve taşınınca teslim edilecek"], ["DVL6020X", 1]], pes: 10000, pay: "Kredi Kartı", defter: "Mağaza Defteri" },
-  { d: "2026-09-16T12:30", c: 1013, by: "ahmet", type: "S", items: [["SN23HI42MT", 1], ["WM14N2E0TR", 1]], pes: 41800, pay: "Havale", defter: "Ana Defter" },
-  { d: "2026-09-23T17:05", c: 1014, by: "mehmet", type: "S", items: [["HB578A0S0T-SET", 1]], pes: 12000, pay: "Nakit", defter: "Mağaza Defteri" },
-  { d: "2026-09-28T11:20", c: 1011, by: "ayse", type: "T", amount: 8000, pay: "Havale", defter: "Mağaza Defteri" },
-  { d: "2026-10-01T10:45", c: 1015, by: "ayse", type: "S", items: [["CM10120TR", 1], ["BM4282EG", 1]], pes: 8000, pay: "Nakit", defter: "Mağaza Defteri" },
-  { d: "2026-10-05T14:50", c: 1012, by: "mehmet", type: "T", amount: 5000, pay: "Nakit", defter: "Mağaza Defteri" },
-  { d: "2026-10-07T13:40", c: 1016, by: "mehmet", type: "S", items: [["KGN39VIEB", 1], ["WTH85V00TR", 1]], pes: 18000, pay: "Kredi Kartı", defter: "Mağaza Defteri" },
-  { d: "2026-10-14T16:10", c: 1017, by: "ahmet", type: "S", items: [["SMS4IKI51T", 1, 1, "Mutfak tadilatı bitene kadar depoda bekleyecek"]], pes: 17200, pay: "Nakit", defter: "Online Satış Defteri" },
-  { d: "2026-10-16T11:35", c: 1009, by: "ahmet", type: "T", amount: 7000, pay: "Havale", defter: "Toptan Defter" },
-  { d: "2026-10-20T15:25", c: 1007, by: "ayse", type: "T", amount: 5000, pay: "Nakit", defter: "Ana Defter" },
-  { d: "2026-10-22T10:00", c: 1014, by: "mehmet", type: "T", amount: 6500, pay: "Kredi Kartı", defter: "Mağaza Defteri" },
-  { d: "2026-10-27T12:45", c: 1018, by: "mehmet", type: "S", items: [["HBF113BR0T-SET", 1, 1, "Dairenin teslimi Kasım'da, o zamana kadar depoda"], ["DVL6020X", 1]], pes: 7400, pay: "Nakit", defter: "Mağaza Defteri" },
+  { d: "2026-09-02T10:15", c: 1011, by: "mehmet", type: "S", items: [["WGA254A0TR", 2, 2, "Ev tadilatı bitene kadar depoda bekleyecek"]], pes: 15000, pay: "Nakit" },
+  { d: "2026-09-09T15:55", c: 1012, by: "ayse", type: "S", items: [["KGN86AI42N", 1, 1, "Yeni eve taşınınca teslim edilecek"], ["DVL6020X", 1]], pes: 10000, pay: "Kredi Kartı" },
+  { d: "2026-09-16T12:30", c: 1013, by: "ahmet", type: "S", items: [["SN23HI42MT", 1], ["WM14N2E0TR", 1]], pes: 41800, pay: "Havale" },
+  { d: "2026-09-23T17:05", c: 1014, by: "mehmet", type: "S", items: [["HB578A0S0T-SET", 1]], pes: 12000, pay: "Nakit" },
+  { d: "2026-09-28T11:20", c: 1011, by: "ayse", type: "T", amount: 8000, pay: "Havale" },
+  { d: "2026-10-01T10:45", c: 1015, by: "ayse", type: "S", items: [["CM10120TR", 1], ["BM4282EG", 1]], pes: 8000, pay: "Nakit" },
+  { d: "2026-10-05T14:50", c: 1012, by: "mehmet", type: "T", amount: 5000, pay: "Nakit" },
+  { d: "2026-10-07T13:40", c: 1016, by: "mehmet", type: "S", items: [["KGN39VIEB", 1], ["WTH85V00TR", 1]], pes: 18000, pay: "Kredi Kartı" },
+  { d: "2026-10-14T16:10", c: 1017, by: "ahmet", type: "S", items: [["SMS4IKI51T", 1, 1, "Mutfak tadilatı bitene kadar depoda bekleyecek"]], pes: 17200, pay: "Nakit" },
+  { d: "2026-10-16T11:35", c: 1009, by: "ahmet", type: "T", amount: 7000, pay: "Havale" },
+  { d: "2026-10-20T15:25", c: 1007, by: "ayse", type: "T", amount: 5000, pay: "Nakit" },
+  { d: "2026-10-22T10:00", c: 1014, by: "mehmet", type: "T", amount: 6500, pay: "Kredi Kartı" },
+  { d: "2026-10-27T12:45", c: 1018, by: "mehmet", type: "S", items: [["HBF113BR0T-SET", 1, 1, "Dairenin teslimi Kasım'da, o zamana kadar depoda"], ["DVL6020X", 1]], pes: 7400, pay: "Nakit" },
 ];
 
 /** Üretildiği ana göre değişen (bugün / dün) işlemler: Dashboard "bugün" ve Mağazam "bu ay" verisi boş kalmasın. */
@@ -244,7 +246,6 @@ const buildRelativeTxSpecs = (now) => [
     type: "T",
     amount: 4800,
     pay: "Nakit",
-    defter: "Mağaza Defteri",
     not: "Mağazadan elden ödeme",
   },
   {
@@ -255,7 +256,6 @@ const buildRelativeTxSpecs = (now) => [
     items: [["WGA254A0TR", 1], ["DVL6020X", 1]],
     pes: 14000,
     pay: "Kredi Kartı",
-    defter: "Mağaza Defteri",
     not: "Mağaza satış",
   },
   {
@@ -265,7 +265,6 @@ const buildRelativeTxSpecs = (now) => [
     type: "T",
     amount: 2000,
     pay: "Nakit",
-    defter: "Mağaza Defteri",
     not: "Kasadan tahsilat",
   },
 ];
@@ -385,22 +384,39 @@ export const buildSeedDatabase = (now = new Date()) => {
   const nextId = (prefix) => `${prefix}_${pad4(++seq)}`;
 
   // Personeller
-  const users = USER_SPECS.map((spec) => ({
-    _id: `usr_${spec.key}`,
-    id: `usr_${spec.key}`,
-    tenantId: STORE_ID,
-    ad: spec.ad,
-    soyad: spec.soyad,
-    email: spec.email,
-    password: DEMO_PASSWORD,
-    role: spec.role,
-    permissions: { ...spec.permissions },
-    pageLocks: { ...NO_LOCKS },
-    pagePasswords: { finans: "", stok: "", raporlar: "", envanter: "", transferler: "" },
-    isDeleted: false,
-    createdAt: localIso(spec.createdAt),
-    updatedAt: localIso(spec.createdAt),
-  }));
+  const users = USER_SPECS.map((spec) => {
+    const isAdmin = spec.role === "admin";
+    return {
+      _id: `usr_${spec.key}`,
+      id: `usr_${spec.key}`,
+      tenantId: STORE_ID,
+      ad: spec.ad,
+      soyad: spec.soyad,
+      email: spec.email,
+      password: DEMO_PASSWORD,
+      role: spec.role,
+      permissions: { ...spec.permissions },
+      allowedPages: {
+        dashboard: true,
+        magazam: isAdmin,
+        musteriler: true,
+        "urun-stok": true,
+        envanter: true,
+        "musteri-finans": true,
+        raporlar: true,
+        personeller: isAdmin,
+      },
+      pageLocks: {
+        ...NO_LOCKS,
+        magazam: !isAdmin,
+        personeller: !isAdmin,
+      },
+      pagePasswords: { finans: "", stok: "", raporlar: "", envanter: "", transferler: "" },
+      isDeleted: false,
+      createdAt: localIso(spec.createdAt),
+      updatedAt: localIso(spec.createdAt),
+    };
+  });
   const userByKey = Object.fromEntries(USER_SPECS.map((s, i) => [s.key, users[i]]));
   const fullName = (u) => `${u.ad} ${u.soyad}`;
 
@@ -609,7 +625,6 @@ export const buildSeedDatabase = (now = new Date()) => {
       ...record,
       musteriBakiyeSonrasi: customer.toplamKalanBakiye,
       odemeYontemi: spec.pay,
-      kayitDefteri: spec.defter,
       aciklama: spec.not || "",
       installments: [],
       isDeleted: false,

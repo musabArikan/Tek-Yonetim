@@ -13,7 +13,6 @@ import {
   ChevronRight,
   Trash2,
   Edit3,
-  Settings,
   Save,
   X,
   Phone,
@@ -21,6 +20,8 @@ import {
   UserCheck,
   Building2,
   Filter,
+  Lock,
+  Mail,
 } from "lucide-react";
 import {
   EXPENSE_CATEGORIES,
@@ -249,156 +250,13 @@ function ExpenseFormModal({ isOpen, onClose, initialData, defaultYear, defaultMo
   );
 }
 
-function StoreSettingsModal({ isOpen, onClose, profile, onProfileSaved }) {
-  const [form, setForm] = useState({
-    ad: "",
-    yetkili: "",
-    telefon: "",
-    adres: "",
-  });
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (profile) {
-      setForm({
-        ad: profile.ad || "",
-        yetkili: profile.yetkili || "",
-        telefon: profile.telefon || "",
-        adres: profile.adres || "",
-      });
-    }
-  }, [profile, isOpen]);
-
-  if (!isOpen) return null;
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!form.ad.trim() || !form.yetkili.trim()) {
-      toast.error("Mağaza adı ve yetkili adı zorunludur.");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const result = await updateStoreProfile(form);
-      toast.success("Mağaza profili başarıyla güncellendi.");
-      onProfileSaved(result);
-      onClose();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Mağaza bilgileri güncellenemedi.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-      <div className="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-lg border border-outline-variant/20 overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20 bg-surface-container-low">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-              <Settings size={19} />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-on-surface">Mağaza Ayarları</h2>
-              <p className="text-xs text-on-surface-variant">
-                Mağaza kimlik ve iletişim bilgilerini güncelleyin
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant cursor-pointer"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-on-surface-variant mb-1">
-              Mağaza Adı *
-            </label>
-            <input
-              type="text"
-              required
-              value={form.ad}
-              onChange={(e) => setForm((f) => ({ ...f, ad: e.target.value }))}
-              placeholder="Örn: Güneş Beyaz Eşya Mağazası"
-              className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface focus:outline-hidden focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1">
-                Yetkili Adı Soyadı *
-              </label>
-              <input
-                type="text"
-                required
-                value={form.yetkili}
-                onChange={(e) => setForm((f) => ({ ...f, yetkili: e.target.value }))}
-                placeholder="Örn: Ahmet Yılmaz"
-                className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface focus:outline-hidden focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1">
-                Telefon Numarası
-              </label>
-              <input
-                type="text"
-                value={form.telefon}
-                onChange={(e) => setForm((f) => ({ ...f, telefon: e.target.value }))}
-                placeholder="Örn: 0312 555 01 01"
-                className="w-full px-3 py-2.5 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface focus:outline-hidden focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-on-surface-variant mb-1">
-              Açık Adres
-            </label>
-            <textarea
-              rows={3}
-              value={form.adres}
-              onChange={(e) => setForm((f) => ({ ...f, adres: e.target.value }))}
-              placeholder="Mahalle, cadde, bina no, ilçe / il"
-              className="w-full px-3 py-2 rounded-lg border border-outline-variant/40 bg-surface text-sm text-on-surface focus:outline-hidden focus:ring-2 focus:ring-primary/30 resize-none"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-on-surface-variant hover:bg-surface-container cursor-pointer"
-            >
-              İptal
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-5 py-2 rounded-lg text-sm font-semibold bg-primary text-on-primary hover:opacity-90 disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
-            >
-              <Save size={16} />
-              {saving ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 export default function MyStorePage({ onSessionRefresh }) {
   const now = useMemo(() => new Date(), []);
   const [selectedYear, setSelectedYear] = useState(() => now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(() => now.getMonth() + 1); // 1..12
+
+  // Varsayılan (default) sekme: Gelirler Geçmişi (Satışlar)
+  const [activeHistoryTab, setActiveHistoryTab] = useState("sales");
 
   const [summary, setSummary] = useState({
     aylikToplamCiro: 0,
@@ -412,6 +270,7 @@ export default function MyStorePage({ onSessionRefresh }) {
     isCurrentMonth: true,
     periodStart: "",
     periodEnd: "",
+    sales: [],
     expenses: [],
   });
   const [storeProfile, setStoreProfile] = useState(null);
@@ -425,10 +284,9 @@ export default function MyStorePage({ onSessionRefresh }) {
   const [loading, setLoading] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState("");
 
-  // Modals
+  // Gider Ekle/Düzenle Modalı
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
-  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
 
   const loadStoreData = useCallback(async () => {
     setLoading(true);
@@ -496,6 +354,11 @@ export default function MyStorePage({ onSessionRefresh }) {
     return `1 ${monthName} ${selectedYear} – ${lastDay} ${monthName} ${selectedYear}`;
   }, [selectedYear, selectedMonth, isCurrentMonthSelected, now]);
 
+  const salesList = useMemo(
+    () => (Array.isArray(summary.sales) ? summary.sales : []),
+    [summary.sales],
+  );
+
   const filteredExpenses = useMemo(() => {
     const list = Array.isArray(summary.expenses) ? summary.expenses : [];
     if (!categoryFilter) return list;
@@ -562,9 +425,17 @@ export default function MyStorePage({ onSessionRefresh }) {
     return [currentYear - 3, currentYear - 2, currentYear - 1, currentYear, currentYear + 1];
   }, []);
 
+  const lockedFounderEmail =
+    storeProfile?.kurucuEmail || storeProfile?.email || "ahmet.yilmaz@tekyonetim.com";
+  const lockedMailDomain =
+    storeProfile?.mailDomain ||
+    (lockedFounderEmail.includes("@")
+      ? lockedFounderEmail.split("@")[1]
+      : "tekyonetim.com");
+
   return (
     <div className="space-y-6">
-      {/* Üst Başlık + Ay/Yıl Seçici + Aksiyon Butonları */}
+      {/* Üst Başlık + Ay/Yıl Seçici */}
       <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 shadow-xs p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="flex items-start sm:items-center gap-3.5">
           <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
@@ -592,7 +463,7 @@ export default function MyStorePage({ onSessionRefresh }) {
           </div>
         </div>
 
-        {/* Ay/Yıl Seçici ve Butonlar */}
+        {/* Ay/Yıl Seçici */}
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex items-center bg-surface-container-low border border-outline-variant/30 rounded-xl p-1 gap-1">
             <button
@@ -651,27 +522,6 @@ export default function MyStorePage({ onSessionRefresh }) {
               Bu Aya Dön
             </button>
           )}
-
-          <button
-            type="button"
-            onClick={() => setSettingsModalOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-outline-variant/40 text-on-surface hover:bg-surface-container-low transition-colors flex items-center gap-1.5 cursor-pointer"
-          >
-            <Settings size={16} className="text-primary" />
-            Mağaza Ayarları
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setEditingExpense(null);
-              setExpenseModalOpen(true);
-            }}
-            className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition-opacity flex items-center gap-1.5 shadow-xs cursor-pointer"
-          >
-            <Plus size={16} />
-            + Yeni Gider Ekle
-          </button>
         </div>
       </div>
 
@@ -717,11 +567,11 @@ export default function MyStorePage({ onSessionRefresh }) {
           </div>
         </div>
 
-        {/* 3. Brüt Satış Kazancı */}
+        {/* 3. Ürün Satış Kârı (Net Satış Kazancı) */}
         <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-              Brüt Satış Kazancı
+              Ürün Satış Kârı (Net Satış Kazancı)
             </span>
             <div className="w-10 h-10 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center shrink-0">
               <Wallet size={20} />
@@ -736,7 +586,7 @@ export default function MyStorePage({ onSessionRefresh }) {
               {formatCurrency(summary.brutSatisKazanci)}
             </div>
             <p className="text-xs text-on-surface-variant mt-1">
-              Aylık Ciro − Satılan Ürün Maliyeti
+              Satış Tutarı - Ürün Alış Maliyeti
             </p>
           </div>
         </div>
@@ -761,7 +611,7 @@ export default function MyStorePage({ onSessionRefresh }) {
           </div>
         </div>
 
-        {/* 5. NET KAZANÇ */}
+        {/* 5. Dükkan Net Kazancı (Giderler Sonrası) */}
         <div
           className={`rounded-2xl border p-5 shadow-sm flex flex-col justify-between ${
             summary.netKazanc >= 0
@@ -775,7 +625,7 @@ export default function MyStorePage({ onSessionRefresh }) {
                 summary.netKazanc >= 0 ? "text-emerald-800" : "text-red-800"
               }`}
             >
-              NET KAZANÇ
+              Dükkan Net Kazancı (Giderler Sonrası)
             </span>
             <div
               className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
@@ -800,62 +650,209 @@ export default function MyStorePage({ onSessionRefresh }) {
                 summary.netKazanc >= 0 ? "text-emerald-700/80" : "text-red-700/80"
               }`}
             >
-              Brüt Satış Kazancı − Dükkan Giderleri
+              Ürün Satış Kârı - Dükkan Giderleri
             </p>
           </div>
         </div>
       </div>
 
-      {/* Alt Bölüm: Giderler Geçmişi Tablosu + Mağaza Profili Düzenleme Kartı */}
+      {/* Alt Bölüm: Gelirler & Giderler Geçmişi (2 Sekmeli) + Mağaza Profili Düzenleme Kartı */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
-        {/* Sol 2 Sütun: Giderler Geçmişi Tablosu */}
+        {/* Sol 2 Sütun: Gelirler Geçmişi (Satışlar) & Giderler Geçmişi */}
         <div className="xl:col-span-2 bg-surface-container-lowest rounded-2xl border border-outline-variant/20 shadow-xs overflow-hidden">
-          <div className="px-6 py-4 border-b border-outline-variant/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h2 className="text-base font-bold text-on-surface flex items-center gap-2">
-                <Receipt size={18} className="text-red-600" />
-                Giderler Geçmişi ({MONTH_NAMES[selectedMonth - 1]} {selectedYear})
-              </h2>
-              <p className="text-xs text-on-surface-variant mt-0.5">
-                Seçili dönemde kaydedilen maaş, kira, fatura ve diğer işletme giderleri
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
-                <Filter
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none"
-                />
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="pl-8 pr-3 py-2 rounded-lg border border-outline-variant/30 bg-surface text-xs font-semibold text-on-surface focus:outline-hidden focus:ring-2 focus:ring-primary/30 cursor-pointer"
-                >
-                  <option value="">Tüm Kategoriler</option>
-                  {EXPENSE_CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          {/* Sekme Başlıkları */}
+          <div className="px-6 pt-4 border-b border-outline-variant/20 bg-surface-container-low/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveHistoryTab("sales")}
+                className={`px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-2 cursor-pointer ${
+                  activeHistoryTab === "sales"
+                    ? "border-teal-600 text-teal-800 bg-white shadow-2xs"
+                    : "border-transparent text-on-surface-variant hover:text-on-surface"
+                }`}
+              >
+                <TrendingUp size={16} className="text-teal-600" />
+                Gelirler Geçmişi (Satışlar)
+                <span className="px-2 py-0.5 rounded-full text-[11px] bg-teal-100 text-teal-800">
+                  {salesList.length}
+                </span>
+              </button>
 
               <button
                 type="button"
-                onClick={() => {
-                  setEditingExpense(null);
-                  setExpenseModalOpen(true);
-                }}
-                className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-90 flex items-center gap-1 cursor-pointer"
+                onClick={() => setActiveHistoryTab("expenses")}
+                className={`px-4 py-2.5 rounded-t-xl text-xs sm:text-sm font-bold border-b-2 transition-colors flex items-center gap-2 cursor-pointer ${
+                  activeHistoryTab === "expenses"
+                    ? "border-red-600 text-red-700 bg-white shadow-2xs"
+                    : "border-transparent text-on-surface-variant hover:text-on-surface"
+                }`}
               >
-                <Plus size={14} />
-                Yeni Gider Ekle
+                <Receipt size={16} className="text-red-600" />
+                Giderler Geçmişi
+                <span className="px-2 py-0.5 rounded-full text-[11px] bg-red-100 text-red-800">
+                  {summary.expenses?.length || 0}
+                </span>
               </button>
             </div>
+
+            {/* Giderler sekmesi açıkken filtre ve + Yeni Gider Ekle butonu */}
+            {activeHistoryTab === "expenses" ? (
+              <div className="flex flex-wrap items-center gap-2 pb-2 sm:pb-0">
+                <div className="relative">
+                  <Filter
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none"
+                  />
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 rounded-lg border border-outline-variant/30 bg-surface text-xs font-semibold text-on-surface focus:outline-hidden focus:ring-2 focus:ring-primary/30 cursor-pointer"
+                  >
+                    <option value="">Tüm Kategoriler</option>
+                    {EXPENSE_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingExpense(null);
+                    setExpenseModalOpen(true);
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-90 flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus size={14} />
+                  + Yeni Gider Ekle
+                </button>
+              </div>
+            ) : (
+              <div className="pb-2 sm:pb-0 text-xs text-on-surface-variant">
+                Gelirler yapılan satışlardan otomatik hesaplanır
+              </div>
+            )}
           </div>
 
-          {loading ? (
+          {/* Sekme İçeriği: 1) Gelirler Geçmişi (Satışlar) */}
+          {activeHistoryTab === "sales" ? (
+            loading ? (
+              <div className="text-center py-12 text-on-surface-variant text-sm">
+                Satış gelirleri yükleniyor...
+              </div>
+            ) : salesList.length === 0 ? (
+              <div className="text-center py-12 px-4">
+                <TrendingUp size={36} className="mx-auto text-on-surface-variant/30 mb-2" />
+                <p className="text-sm font-medium text-on-surface-variant">
+                  Bu dönem için kayıtlı satış işlemi bulunamadı.
+                </p>
+                <p className="text-xs text-on-surface-variant/70 mt-1">
+                  Müşteriler sayfasından yapılan tüm satışlar otomatik olarak gelir geçmişine yansır.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-surface-container-low text-on-surface-variant text-xs uppercase tracking-wider">
+                      <th className="text-left px-5 py-3 font-semibold">Tarih</th>
+                      <th className="text-left px-4 py-3 font-semibold">Müşteri</th>
+                      <th className="text-left px-4 py-3 font-semibold">Satılan Ürünler</th>
+                      <th className="text-right px-4 py-3 font-semibold">Satış Tutarı</th>
+                      <th className="text-right px-4 py-3 font-semibold">Alış Maliyeti</th>
+                      <th className="text-right px-5 py-3 font-semibold">Net Satış Kârı</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/15">
+                    {salesList.map((sale) => {
+                      const saleId = sale._id || sale.id;
+                      const items = Array.isArray(sale.urunler) ? sale.urunler : [];
+                      return (
+                        <tr
+                          key={saleId}
+                          className="hover:bg-surface-container-low/50 transition-colors"
+                        >
+                          <td className="px-5 py-3.5 text-xs font-medium text-on-surface whitespace-nowrap">
+                            {new Date(sale.tarih).toLocaleDateString("tr-TR", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            })}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <div className="font-semibold text-on-surface text-xs sm:text-sm">
+                              {sale.musteriAdSoyad || "-"}
+                            </div>
+                            {sale.odemeYontemi ? (
+                              <span className="inline-block mt-0.5 text-[11px] text-on-surface-variant">
+                                {sale.odemeYontemi}
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3.5 text-xs text-on-surface">
+                            {items.length > 0 ? (
+                              <div className="space-y-0.5">
+                                {items.map((u, idx) => (
+                                  <div key={`${u.urunKodu}-${idx}`}>
+                                    <span className="font-bold">{u.urunKodu}</span>
+                                    {u.urunAdi && u.urunAdi !== u.urunKodu ? (
+                                      <span className="text-on-surface-variant"> — {u.urunAdi}</span>
+                                    ) : null}{" "}
+                                    <span className="font-semibold text-primary">
+                                      (x{Number(u.adet || 1)})
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span>{sale.urunBilgisi || "Ürün Satışı"}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 text-right font-bold text-blue-700 whitespace-nowrap">
+                            {formatCurrency(sale.satisTutari)}
+                          </td>
+                          <td className="px-4 py-3.5 text-right font-semibold text-amber-700 whitespace-nowrap">
+                            {formatCurrency(sale.alisMaliyeti)}
+                          </td>
+                          <td
+                            className={`px-5 py-3.5 text-right font-extrabold whitespace-nowrap ${
+                              Number(sale.netSatisKari || 0) >= 0
+                                ? "text-teal-700"
+                                : "text-red-600"
+                            }`}
+                          >
+                            {formatCurrency(sale.netSatisKari)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-surface-container-low/80 font-bold border-t border-outline-variant/25">
+                      <td
+                        colSpan={3}
+                        className="px-5 py-3 text-right text-xs uppercase text-on-surface-variant"
+                      >
+                        Dönem Toplamı ({salesList.length} Satış):
+                      </td>
+                      <td className="px-4 py-3 text-right text-blue-700 font-extrabold whitespace-nowrap">
+                        {formatCurrency(summary.aylikToplamCiro)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-amber-700 font-extrabold whitespace-nowrap">
+                        {formatCurrency(summary.satilanUrunMaliyeti)}
+                      </td>
+                      <td className="px-5 py-3 text-right text-teal-700 font-extrabold whitespace-nowrap">
+                        {formatCurrency(summary.brutSatisKazanci)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )
+          ) : loading ? (
             <div className="text-center py-12 text-on-surface-variant text-sm">
               Gider kayıtları yükleniyor...
             </div>
@@ -948,7 +945,10 @@ export default function MyStorePage({ onSessionRefresh }) {
                 </tbody>
                 <tfoot>
                   <tr className="bg-surface-container-low/80 font-bold border-t border-outline-variant/25">
-                    <td colSpan={3} className="px-5 py-3 text-right text-xs uppercase text-on-surface-variant">
+                    <td
+                      colSpan={3}
+                      className="px-5 py-3 text-right text-xs uppercase text-on-surface-variant"
+                    >
                       Toplam Gider ({filteredExpenses.length} Kayıt):
                     </td>
                     <td className="px-5 py-3 text-right text-red-600 font-extrabold">
@@ -1015,6 +1015,31 @@ export default function MyStorePage({ onSessionRefresh }) {
               />
             </div>
 
+            {/* Kilitli Kurucu E-Posta & Mağaza Domain Alanı */}
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                  <Mail size={13} className="text-slate-500" />
+                  Kurucu E-Posta & Personel Domaini
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
+                  <Lock size={10} />
+                  Sabit / Kilitli
+                </span>
+              </div>
+              <input
+                type="text"
+                value={lockedFounderEmail}
+                disabled
+                readOnly
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-100 text-xs font-mono text-slate-600 cursor-not-allowed"
+              />
+              <div className="text-[11px] text-slate-500 flex items-center justify-between">
+                <span>Personel Mail Uzantısı:</span>
+                <strong className="font-mono text-slate-700">@{lockedMailDomain}</strong>
+              </div>
+            </div>
+
             <div>
               <label className="flex items-center gap-1.5 text-xs font-semibold text-on-surface-variant mb-1">
                 <Phone size={13} className="text-primary" />
@@ -1071,15 +1096,6 @@ export default function MyStorePage({ onSessionRefresh }) {
         defaultMonth={selectedMonth}
         onSaved={loadStoreData}
       />
-
-      {/* Mağaza Ayarları Modalı */}
-      <StoreSettingsModal
-        isOpen={settingsModalOpen}
-        onClose={() => setSettingsModalOpen(false)}
-        profile={storeProfile}
-        onProfileSaved={handleProfileUpdated}
-      />
     </div>
   );
 }
-

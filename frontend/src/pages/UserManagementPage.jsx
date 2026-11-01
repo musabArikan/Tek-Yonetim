@@ -10,6 +10,7 @@ import {
   Sparkles,
   AlertCircle,
   CheckCircle2,
+  LayoutGrid,
 } from "lucide-react";
 import { toast } from "react-toastify";
 import Modal from "../components/modals/Modal";
@@ -24,13 +25,20 @@ import {
 import { checkEmailAvailability } from "../services/authService";
 import { setUserPagePassword } from "../services/reAuthService";
 import { getAuthSession } from "../utils/authStorage";
+import { localDb } from "../utils/localDb";
+import {
+  PAGE_ACCESS_OPTIONS,
+  DEFAULT_STAFF_ALLOWED_PAGES,
+  normalizeAllowedPages,
+  allowedPagesToPageLocks,
+} from "../utils/rbac";
 
 const roleOptions = [
-  { value: "admin", label: "Admin" },
   { value: "yonetici", label: "Yönetici" },
   { value: "kasiyer", label: "Kasiyer" },
   { value: "depo_sorumlusu", label: "Depo Sorumlusu" },
   { value: "personel", label: "Personel" },
+  { value: "admin", label: "Mağaza Yetkilisi (Admin)" },
 ];
 
 const permissionOptions = [
@@ -43,14 +51,6 @@ const permissionOptions = [
   { key: "excelExportEdebilir", label: "Excel Export Alabilir" },
 ];
 
-const pageLockOptions = [
-  { key: "stok", label: "Stok Sayfasını Göremez" },
-  { key: "envanter", label: "Emanetler Sayfasını Göremez" },
-  { key: "borclular", label: "Borçlular Sayfasını Göremez" },
-  { key: "personeller", label: "Personeller Sayfasını Göremez" },
-  { key: "raporlar", label: "Raporları Göremez" },
-];
-
 const emptyFlags = (items) =>
   items.reduce((acc, item) => ({ ...acc, [item.key]: false }), {});
 
@@ -61,7 +61,7 @@ const emptyForm = {
   password: "",
   role: "kasiyer",
   permissions: emptyFlags(permissionOptions),
-  pageLocks: emptyFlags(pageLockOptions),
+  allowedPages: { ...DEFAULT_STAFF_ALLOWED_PAGES },
 };
 
 const extractDomainFromEmail = (emailStr = "") => {
@@ -82,15 +82,23 @@ const slugifyTr = (value = "") =>
     .replace(/[^a-z0-9._-]/g, "")
     .trim();
 
-const normalizeUser = (user) => ({
-  id: user._id || user.id,
-  ad: user.ad || "",
-  soyad: user.soyad || "",
-  email: user.email || "",
-  role: user.role || "personel",
-  permissions: user.permissions || emptyFlags(permissionOptions),
-  pageLocks: user.pageLocks || emptyFlags(pageLockOptions),
-});
+const normalizeUser = (user) => {
+  const role = user.role || "personel";
+  const allowedPages = normalizeAllowedPages(user.allowedPages, {
+    role,
+    pageLocks: user.pageLocks,
+  });
+  return {
+    id: user._id || user.id,
+    ad: user.ad || "",
+    soyad: user.soyad || "",
+    email: user.email || "",
+    role,
+    permissions: user.permissions || emptyFlags(permissionOptions),
+    allowedPages,
+    pageLocks: allowedPagesToPageLocks(allowedPages),
+  };
+};
 
 const roleLabelMap = Object.fromEntries(
   roleOptions.map((item) => [item.value, item.label]),
@@ -118,15 +126,24 @@ export default function UserManagementPage({
   const [isSaving, setIsSaving] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState("");
 
-  // Akıllı e-posta uzantısı (@domain.com) state'leri
+  // Mağaza kurucusunun kilitli e-posta uzantısı (@domain.com)
   const activeDomain = useMemo(() => {
+    try {
+      const storeProfile = localDb.stores.getProfile();
+      if (storeProfile?.mailDomain) {
+        return String(storeProfile.mailDomain).trim().toLowerCase();
+      }
+      if (storeProfile?.kurucuEmail) {
+        return extractDomainFromEmail(storeProfile.kurucuEmail);
+      }
+    } catch {
+      // ignore
+    }
     const sessionEmail = currentUserEmail || getAuthSession()?.email || "";
     return extractDomainFromEmail(sessionEmail);
   }, [currentUserEmail]);
 
   const [emailUsername, setEmailUsername] = useState("");
-  const [emailDomain, setEmailDomain] = useState(activeDomain);
-  const [isEditingDomain, setIsEditingDomain] = useState(false);
   const [emailSuggestions, setEmailSuggestions] = useState([]);
   const [emailAvailableConfirmed, setEmailAvailableConfirmed] = useState(false);
 
@@ -145,16 +162,14 @@ export default function UserManagementPage({
     stok: "",
     raporlar: "",
     envanter: "",
-    transferler: "",
   });
   const [isSavingPagePassword, setIsSavingPagePassword] = useState({});
 
   const PAGE_LABELS = {
-    finans: "Müşteri Finans",
-    stok: "Stok",
+    finans: "Cari & Finans",
+    stok: "Ürün & Stok",
     raporlar: "Raporlar",
-    envanter: "Envanter",
-    transferler: "Transferler",
+    envanter: "Emanetler",
   };
 
   const modalTitle = editingUser ? "Personel Düzenle" : "Yeni Personel Ekle";
@@ -189,13 +204,12 @@ export default function UserManagementPage({
     [users],
   );
 
-  // Kullanıcı adı ve domain birleşiminden tam e-posta adresini senkron tut
+  // Kullanıcı adı ve kilitli mağaza domain birleşiminden tam e-posta adresini senkron tut
   const combinedEmail = useMemo(() => {
     const cleanUser = emailUsername.trim().toLowerCase();
-    const cleanDomain = emailDomain.trim().replace(/^@+/, "").toLowerCase();
     if (!cleanUser) return "";
-    return `${cleanUser}@${cleanDomain || activeDomain}`;
-  }, [emailUsername, emailDomain, activeDomain]);
+    return `${cleanUser}@${activeDomain}`;
+  }, [emailUsername, activeDomain]);
 
   useEffect(() => {
     setForm((prev) => ({ ...prev, email: combinedEmail }));
@@ -203,10 +217,13 @@ export default function UserManagementPage({
 
   const openCreateModal = () => {
     setEditingUser(null);
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      permissions: emptyFlags(permissionOptions),
+      // Yeni personel eklenirken Mağazam ve Personeller erişimi varsayılan olarak kapalı (işaretsiz) gelir
+      allowedPages: { ...DEFAULT_STAFF_ALLOWED_PAGES },
+    });
     setEmailUsername("");
-    setEmailDomain(activeDomain);
-    setIsEditingDomain(false);
     setEmailSuggestions([]);
     setEmailAvailableConfirmed(false);
     setFormError("");
@@ -215,20 +232,21 @@ export default function UserManagementPage({
 
   const openEditModal = (user) => {
     setEditingUser(user);
-    const [localPart = "", domainPart = activeDomain] = String(user.email || "").split("@");
+    const [localPart = ""] = String(user.email || "").split("@");
     setEmailUsername(localPart);
-    setEmailDomain(domainPart || activeDomain);
-    setIsEditingDomain(false);
     setEmailSuggestions([]);
     setEmailAvailableConfirmed(false);
     setForm({
       ad: user.ad,
       soyad: user.soyad,
-      email: user.email,
+      email: `${localPart}@${activeDomain}`,
       password: "",
       role: user.role,
       permissions: { ...emptyFlags(permissionOptions), ...user.permissions },
-      pageLocks: { ...emptyFlags(pageLockOptions), ...user.pageLocks },
+      allowedPages: normalizeAllowedPages(user.allowedPages, {
+        role: user.role,
+        pageLocks: user.pageLocks,
+      }),
     });
     setFormError("");
     setIsModalOpen(true);
@@ -239,8 +257,6 @@ export default function UserManagementPage({
     setEditingUser(null);
     setForm(emptyForm);
     setEmailUsername("");
-    setEmailDomain(activeDomain);
-    setIsEditingDomain(false);
     setEmailSuggestions([]);
     setEmailAvailableConfirmed(false);
     setFormError("");
@@ -269,7 +285,6 @@ export default function UserManagementPage({
       stok: "",
       raporlar: "",
       envanter: "",
-      transferler: "",
     });
     setIsPagePasswordModalOpen(true);
   };
@@ -309,26 +324,14 @@ export default function UserManagementPage({
     setEmailSuggestions([]);
     setEmailAvailableConfirmed(false);
 
-    // Kullanıcı tam e-posta yapıştırırsa (@ içeriyorsa) otomatik olarak kullanıcı adı ve domain'e ayır
+    // Kullanıcı tam e-posta yapıştırırsa (@ içeriyorsa) sadece @ öncesindeki kullanıcı adını al, uzantı kilitlidir
     if (rawValue.includes("@")) {
-      const [localPart, ...domainParts] = rawValue.split("@");
-      const nextDomain = domainParts.join("").trim();
+      const [localPart] = rawValue.split("@");
       setEmailUsername(slugifyTr(localPart));
-      if (nextDomain) {
-        setEmailDomain(nextDomain.toLowerCase());
-      }
       return;
     }
 
     setEmailUsername(slugifyTr(rawValue));
-  };
-
-  const handleEmailDomainChange = (event) => {
-    const rawDomain = event.target.value.replace(/^@+/, "").trim().toLowerCase();
-    setEmailDomain(rawDomain);
-    setFormError("");
-    setEmailSuggestions([]);
-    setEmailAvailableConfirmed(false);
   };
 
   const handleCheckStaffEmail = async () => {
@@ -353,9 +356,8 @@ export default function UserManagementPage({
   };
 
   const handleSelectEmailSuggestion = (suggestedEmail) => {
-    const [localPart = "", domainPart = activeDomain] = String(suggestedEmail).split("@");
+    const [localPart = ""] = String(suggestedEmail).split("@");
     setEmailUsername(localPart);
-    setEmailDomain(domainPart || activeDomain);
     setFormError("");
     setEmailSuggestions([]);
     setEmailAvailableConfirmed(true);
@@ -378,7 +380,8 @@ export default function UserManagementPage({
     ...(editingUser ? {} : { password: form.password }),
     role: form.role,
     permissions: form.permissions,
-    pageLocks: form.pageLocks,
+    allowedPages: form.allowedPages,
+    pageLocks: allowedPagesToPageLocks(form.allowedPages),
   });
 
   const handleSubmit = async (event) => {
@@ -391,9 +394,9 @@ export default function UserManagementPage({
       return;
     }
 
-    const cleanDomain = emailDomain.trim().replace(/^@+/, "");
-    if (!cleanDomain || !cleanDomain.includes(".")) {
-      setFormError("Lütfen geçerli bir e-posta uzantısı giriniz (örn: gunesmagaza.com).");
+    const hasAtLeastOnePage = Object.values(form.allowedPages || {}).some(Boolean);
+    if (!hasAtLeastOnePage) {
+      setFormError("Personelin erişebileceği en az 1 sayfa seçmelisiniz.");
       return;
     }
 
@@ -434,7 +437,7 @@ export default function UserManagementPage({
 
       toast.success(
         editingUser
-          ? "Personel bilgileri güncellendi."
+          ? "Personel bilgileri ve sayfa yetkileri güncellendi."
           : `Yeni personel (${combinedEmail}) oluşturuldu.`,
       );
 
@@ -519,8 +522,10 @@ export default function UserManagementPage({
             Personeller
           </h2>
           <p className="text-sm text-on-surface-variant mt-1">
-            İşletmenize bağlı kullanıcıları yönetin. Varsayılan mağaza e-posta uzantınız:{" "}
-            <span className="font-semibold text-primary-container">@{activeDomain}</span>
+            İşletmenize bağlı kullanıcıları ve sayfa erişim yetkilerini yönetin. Sabit mağaza e-posta uzantınız:{" "}
+            <span className="inline-flex items-center gap-1 font-semibold text-primary-container">
+              <Lock size={12} />@{activeDomain}
+            </span>
           </p>
         </div>
         <button
@@ -564,7 +569,10 @@ export default function UserManagementPage({
                     Rol
                   </th>
                   <th className="p-4 text-xs font-semibold text-on-surface-variant">
-                    Yetkiler
+                    Erişebildiği Sayfalar
+                  </th>
+                  <th className="p-4 text-xs font-semibold text-on-surface-variant">
+                    İşlem Yetkileri
                   </th>
                   <th className="p-4 text-xs font-semibold text-on-surface-variant text-right">
                     İşlemler
@@ -576,6 +584,9 @@ export default function UserManagementPage({
                   const isSelf = user.id === currentUserId;
                   const enabledPermissions = permissionOptions.filter(
                     (item) => user.permissions?.[item.key],
+                  );
+                  const enabledPages = PAGE_ACCESS_OPTIONS.filter(
+                    (item) => user.allowedPages?.[item.key],
                   );
 
                   return (
@@ -603,19 +614,31 @@ export default function UserManagementPage({
                         {roleLabelMap[user.role] || user.role}
                       </td>
                       <td className="p-4">
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          {enabledPages.map((page) => (
+                            <span
+                              key={page.key}
+                              className="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs font-semibold text-blue-800"
+                            >
+                              {page.label}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-wrap gap-1.5">
                           {enabledPermissions.length > 0 ? (
                             enabledPermissions.map((item) => (
                               <span
                                 key={item.key}
-                                className="rounded-full bg-surface px-2.5 py-1 text-xs font-medium text-on-surface"
+                                className="rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium text-on-surface"
                               >
                                 {item.label}
                               </span>
                             ))
                           ) : (
                             <span className="text-xs text-on-surface-variant">
-                              Yetki atanmadı
+                              Standart görüntüleme
                             </span>
                           )}
                         </div>
@@ -694,9 +717,9 @@ export default function UserManagementPage({
               />
             </FormField>
 
-            {/* Akıllı E-posta Alanı: Sağ tarafta otomatik @domain.com uzantısı */}
+            {/* Kilitli Mağaza Uzantılı E-posta Alanı */}
             <div className="md:col-span-2">
-              <FormField label="E-posta (Otomatik Mağaza Uzantılı)" required>
+              <FormField label="Personel E-posta Adresi (Sabit Mağaza Uzantılı)" required>
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-stretch rounded-lg border border-outline-variant bg-surface-container-lowest overflow-hidden focus-within:border-primary focus-within:ring-1 focus-within:ring-primary">
                     <input
@@ -711,44 +734,24 @@ export default function UserManagementPage({
                       }
                       className="flex-1 min-w-0 border-0 bg-transparent px-3.5 py-2.5 text-sm text-on-surface outline-none placeholder:text-on-surface-variant/60"
                     />
-                    <div className="flex items-center border-l border-outline-variant bg-surface-variant/60 px-3 py-1.5 gap-1">
+                    <div
+                      title="Mağaza e-posta uzantısı sabittir ve değiştirilemez"
+                      className="flex items-center border-l border-outline-variant bg-slate-100 px-3.5 py-1.5 gap-1.5 select-none cursor-not-allowed"
+                    >
                       <AtSign size={14} className="text-primary-container shrink-0" />
-                      {isEditingDomain ? (
-                        <input
-                          type="text"
-                          value={emailDomain}
-                          onChange={handleEmailDomainChange}
-                          onBlur={() => {
-                            if (!emailDomain.trim()) setEmailDomain(activeDomain);
-                            setIsEditingDomain(false);
-                            handleCheckStaffEmail();
-                          }}
-                          autoFocus
-                          placeholder={activeDomain}
-                          className="w-36 rounded border border-primary/40 bg-white px-2 py-1 text-xs font-semibold text-on-surface outline-none"
-                        />
-                      ) : (
-                        <span className="text-xs sm:text-sm font-semibold text-primary-container select-none">
-                          {emailDomain || activeDomain}
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setIsEditingDomain((prev) => !prev)}
-                        title="Domain uzantısını manuel değiştir"
-                        className="ml-1.5 rounded px-1.5 py-0.5 text-[11px] font-medium text-on-surface-variant hover:bg-surface hover:text-on-surface transition-colors cursor-pointer"
-                      >
-                        {isEditingDomain ? "Tamam" : "Değiştir"}
-                      </button>
+                      <span className="text-xs sm:text-sm font-bold text-primary-container">
+                        {activeDomain}
+                      </span>
+                      <Lock size={13} className="text-slate-500 ml-1 shrink-0" />
                     </div>
                   </div>
 
                   {/* Otomatik birleşen tam e-posta önizlemesi ve hızlı isim önerisi */}
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div className="text-on-surface-variant">
-                      Birleşen E-posta:{" "}
+                      Giriş E-postası:{" "}
                       <span className="font-semibold text-on-surface">
-                        {combinedEmail || `kullanici@${emailDomain || activeDomain}`}
+                        {combinedEmail || `kullanici@${activeDomain}`}
                       </span>
                     </div>
 
@@ -764,7 +767,7 @@ export default function UserManagementPage({
                         className="inline-flex items-center gap-1 text-xs font-semibold text-primary-container hover:underline cursor-pointer"
                       >
                         <Sparkles size={12} />
-                        &ldquo;{slugifyTr(form.ad)}@{emailDomain || activeDomain}&rdquo; olarak doldur
+                        &ldquo;{slugifyTr(form.ad)}@{activeDomain}&rdquo; olarak doldur
                       </button>
                     )}
                   </div>
@@ -803,46 +806,72 @@ export default function UserManagementPage({
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Sayfa Bazlı Erişim Yetkileri */}
             <div className="rounded-xl border border-outline-variant bg-surface p-4">
               <SectionTitle
-                title="Yetkiler"
-                description="Kritik işlemleri gerçekleştirebileceği alanları seçin."
+                title="Erişebileceği Sayfalar (Menü & Ekran Yetkisi)"
+                description="Personelin üst menüde görebileceği ve girebileceği sayfaları seçin."
               />
-              <div className="mt-4 space-y-3">
+              <div className="mt-4 space-y-2.5">
+                {PAGE_ACCESS_OPTIONS.map((item) => {
+                  const isChecked = Boolean(form.allowedPages?.[item.key]);
+                  const isSensitive =
+                    item.key === "magazam" || item.key === "personeller";
+                  return (
+                    <label
+                      key={item.key}
+                      className={`flex items-center justify-between gap-4 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
+                        isChecked
+                          ? "border-blue-200 bg-blue-50/50"
+                          : "border-outline-variant bg-surface-container-lowest"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <LayoutGrid
+                          size={14}
+                          className={
+                            isChecked ? "text-primary-container" : "text-slate-400"
+                          }
+                        />
+                        <span className="text-sm font-medium text-on-surface">
+                          {item.label}
+                        </span>
+                        {isSensitive ? (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                            Yönetici Ekranı
+                          </span>
+                        ) : null}
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={handleFlagChange("allowedPages", item.key)}
+                        className="h-4 w-4 accent-primary-container cursor-pointer"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* İşlem Bazlı Yetkiler */}
+            <div className="rounded-xl border border-outline-variant bg-surface p-4">
+              <SectionTitle
+                title="İşlem Yetkileri"
+                description="Erişebildiği sayfalarda gerçekleştirebileceği kritik aksiyonları seçin."
+              />
+              <div className="mt-4 space-y-2.5">
                 {permissionOptions.map((item) => (
                   <label
                     key={item.key}
-                    className="flex items-center justify-between gap-4 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                    className="flex items-center justify-between gap-4 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 cursor-pointer"
                   >
                     <span className="text-sm text-on-surface">{item.label}</span>
                     <input
                       type="checkbox"
                       checked={Boolean(form.permissions[item.key])}
                       onChange={handleFlagChange("permissions", item.key)}
-                      className="h-4 w-4 accent-primary-container"
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-outline-variant bg-surface p-4">
-              <SectionTitle
-                title="Sayfa Kısıtlamaları"
-                description="Görmesini istemediğiniz ekranları kapatın."
-              />
-              <div className="mt-4 space-y-3">
-                {pageLockOptions.map((item) => (
-                  <label
-                    key={item.key}
-                    className="flex items-center justify-between gap-4 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-                  >
-                    <span className="text-sm text-on-surface">{item.label}</span>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(form.pageLocks[item.key])}
-                      onChange={handleFlagChange("pageLocks", item.key)}
-                      className="h-4 w-4 accent-primary-container"
+                      className="h-4 w-4 accent-primary-container cursor-pointer"
                     />
                   </label>
                 ))}

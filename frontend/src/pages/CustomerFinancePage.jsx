@@ -18,6 +18,7 @@ import { getCustomers } from "../services/customerService";
 import { createCollection } from "../services/financeService";
 import { getCustomerTransactions } from "../services/transactionService";
 import TransactionTable from "../components/customers/TransactionTable";
+import PaymentMethodSelect from "../components/ui/PaymentMethodSelect";
 
 // ─── Yardımcı fonksiyonlar ────────────────────────────────────────────────────
 
@@ -127,24 +128,17 @@ function CollectionModal({
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Ödeme Yöntemi
               </label>
-              <select
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 cursor-pointer"
+              <PaymentMethodSelect
                 value={form.paymentMethod}
                 onChange={(e) =>
                   setForm((p) => ({ ...p, paymentMethod: e.target.value }))
                 }
-              >
-                {["Nakit", "Kart", "Havale", "EFT", "Çek", "Diğer"].map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div>

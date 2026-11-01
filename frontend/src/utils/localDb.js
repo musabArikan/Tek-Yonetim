@@ -18,6 +18,10 @@ import {
   isExplicitlyLoggedOut,
   setAuthSession,
 } from "./authStorage.js";
+import {
+  normalizeAllowedPages,
+  allowedPagesToPageLocks,
+} from "./rbac.js";
 
 const DB_KEY = "tekyonetim_local_db";
 const LATENCY_MS = 25;
@@ -199,6 +203,39 @@ const ensureDbMigrations = (db) => {
     });
   }
 
+  // Mağazalarda kurucu e-posta ve kilitli mailDomain bilgisini garanti altına al
+  if (Array.isArray(db.stores) && Array.isArray(db.users)) {
+    db.stores.forEach((store) => {
+      const storeAdmin = db.users.find(
+        (u) => !u.isDeleted && sameId(u.tenantId, store._id) && u.role === "admin",
+      );
+      const founderEmail = lc(store.kurucuEmail || storeAdmin?.email || store.email || "");
+      const domain = founderEmail.includes("@")
+        ? founderEmail.split("@")[1]
+        : store.mailDomain || "tekyonetim.com";
+      if (founderEmail && store.kurucuEmail !== founderEmail) {
+        store.kurucuEmail = founderEmail;
+        store.email = founderEmail;
+        mutated = true;
+      }
+      if (domain && store.mailDomain !== domain) {
+        store.mailDomain = domain;
+        mutated = true;
+      }
+    });
+
+    db.users.forEach((user) => {
+      if (!user.allowedPages) {
+        user.allowedPages = normalizeAllowedPages(null, {
+          role: user.role,
+          pageLocks: user.pageLocks,
+        });
+        user.pageLocks = allowedPagesToPageLocks(user.allowedPages);
+        mutated = true;
+      }
+    });
+  }
+
   if (mutated) {
     persist(db);
   }
@@ -331,12 +368,12 @@ const customerRef = (customer) =>
     : null;
 
 const userRef = (db, id) => {
-  const user = db.users.find((u) => sameId(u._id, id));
+  const user = db.users.find((u) => inTenant(u) && sameId(u._id, id));
   return user ? { _id: user._id, id: user._id, ad: user.ad, soyad: user.soyad } : null;
 };
 
 const branchRef = (db, id) => {
-  const branch = db.branches.find((b) => sameId(b._id, id));
+  const branch = db.branches.find((b) => inTenant(b) && sameId(b._id, id));
   return branch ? { _id: branch._id, id: branch._id, ad: branch.ad, adres: branch.adres } : null;
 };
 
@@ -388,7 +425,18 @@ const PERMISSION_KEYS = [
   "zRaporuAlabilir",
   "excelExportEdebilir",
 ];
-const PAGE_LOCK_KEYS = ["stok", "envanter", "borclular", "personeller", "raporlar"];
+const PAGE_LOCK_KEYS = [
+  "dashboard",
+  "magazam",
+  "musteriler",
+  "urun-stok",
+  "stok",
+  "envanter",
+  "musteri-finans",
+  "borclular",
+  "raporlar",
+  "personeller",
+];
 const PAGE_PASSWORD_KEYS = ["finans", "stok", "raporlar", "envanter", "transferler"];
 
 const ROLE_HIERARCHY = { admin: 4, yonetici: 3, kasiyer: 2, depo_sorumlusu: 2, personel: 1 };
@@ -401,7 +449,17 @@ const pagePasswordFlags = (user) =>
 const sanitizeUser = (user) => {
   // eslint-disable-next-line no-unused-vars
   const { password, pagePasswords, ...rest } = user;
-  return { ...rest, hasPagePasswords: pagePasswordFlags(user) };
+  const allowedPages = normalizeAllowedPages(user.allowedPages, {
+    role: user.role,
+    pageLocks: user.pageLocks,
+  });
+  const pageLocks = allowedPagesToPageLocks(allowedPages);
+  return {
+    ...rest,
+    allowedPages,
+    pageLocks,
+    hasPagePasswords: pagePasswordFlags(user),
+  };
 };
 
 const paymentMethodMap = {
@@ -425,11 +483,20 @@ const LOGIN_ALIASES = {
 };
 
 const buildSessionForUser = (user, db = null) => {
-  const store = db?.stores?.find((s) => sameId(s._id, user.tenantId)) || db?.stores?.[0];
+  const store = db?.stores?.find((s) => sameId(s._id, user.tenantId));
   const storeAdmin =
     db?.users?.find(
       (u) => !u.isDeleted && sameId(u.tenantId, user.tenantId) && u.role === "admin",
     ) || user;
+  const founderEmail = lc(store?.kurucuEmail || storeAdmin?.email || store?.email || user.email);
+  const storeDomain =
+    store?.mailDomain ||
+    (founderEmail.includes("@") ? founderEmail.split("@")[1] : "tekyonetim.com");
+  const allowedPages = normalizeAllowedPages(user.allowedPages, {
+    role: user.role,
+    pageLocks: user.pageLocks,
+  });
+  const pageLocks = allowedPagesToPageLocks(allowedPages);
   return {
     token: `local.${user._id}.${Date.now().toString(36)}`,
     userId: user._id,
@@ -438,10 +505,13 @@ const buildSessionForUser = (user, db = null) => {
     tenantId: user.tenantId,
     storeName: store?.ad || "Tek Yönetim Mağazası",
     storeOwner: store?.yetkili || fullName(storeAdmin) || fullName(user),
+    storeEmail: founderEmail,
+    storeDomain,
     email: user.email,
     role: user.role,
     permissions: user.permissions,
-    pageLocks: user.pageLocks,
+    allowedPages,
+    pageLocks,
     hasPagePasswords: pagePasswordFlags(user),
   };
 };
@@ -679,6 +749,8 @@ const auth = {
         const now = nowIso();
         const storeId = newId("store");
 
+        const mailDomain = email.split("@")[1] || "tekyonetim.com";
+
         const store = {
           _id: storeId,
           id: storeId,
@@ -688,6 +760,8 @@ const auth = {
           adres: address,
           telefon: phone,
           email,
+          kurucuEmail: email,
+          mailDomain,
           vergiDairesi: "",
           vergiNo: "",
           isActive: true,
@@ -698,7 +772,8 @@ const auth = {
         db.stores.push(store);
 
         const allPermissions = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true]));
-        const noLocks = Object.fromEntries(PAGE_LOCK_KEYS.map((k) => [k, false]));
+        const adminAllowedPages = normalizeAllowedPages(null, { role: "admin" });
+        const noLocks = allowedPagesToPageLocks(adminAllowedPages);
 
         const ownerUser = {
           _id: newId("usr"),
@@ -710,6 +785,7 @@ const auth = {
           password: String(password),
           role: "admin",
           permissions: allPermissions,
+          allowedPages: adminAllowedPages,
           pageLocks: noLocks,
           pagePasswords: { finans: "", stok: "", raporlar: "", envanter: "", transferler: "" },
           isDeleted: false,
@@ -767,10 +843,13 @@ const auth = {
   setPagePassword: (userId, { page, password }) =>
     run(
       (db) => {
+        const actor = getActor(db);
         if (!page || !PAGE_PASSWORD_KEYS.includes(page)) {
           throw createHttpError("Geçersiz sayfa adı", 400);
         }
-        const user = db.users.find((u) => !u.isDeleted && sameId(u._id, userId));
+        const user = db.users.find(
+          (u) => !u.isDeleted && inTenant(u, actor.tenantId) && sameId(u._id, userId),
+        );
         if (!user) throw createHttpError("Kullanıcı bulunamadı", 404);
         user.pagePasswords = { ...user.pagePasswords, [page]: password || "" };
         touch(user);
@@ -782,11 +861,32 @@ const auth = {
 
 // ─── Mağaza ───────────────────────────────────────────────────────────────────
 
+const resolveStoreLockedDomain = (db, store, fallbackEmail = "") => {
+  const storeAdmin = db.users.find(
+    (u) => !u.isDeleted && sameId(u.tenantId, store?._id) && u.role === "admin",
+  );
+  const founderEmail = lc(
+    store?.kurucuEmail || storeAdmin?.email || store?.email || fallbackEmail || "",
+  );
+  const mailDomain =
+    store?.mailDomain ||
+    (founderEmail.includes("@") ? founderEmail.split("@")[1] : "tekyonetim.com");
+  return { founderEmail, mailDomain };
+};
+
 const stores = {
   getProfile: () =>
     run((db) => {
       const tenantId = getCurrentTenantId(db);
-      return db.stores.find((s) => sameId(s._id, tenantId)) ?? db.stores[0];
+      const store = db.stores.find((s) => sameId(s._id, tenantId));
+      if (!store) throw createHttpError("Mağaza kaydı bulunamadı", 404);
+      const { founderEmail, mailDomain } = resolveStoreLockedDomain(db, store);
+      return {
+        ...store,
+        email: founderEmail || store.email,
+        kurucuEmail: founderEmail || store.kurucuEmail || store.email,
+        mailDomain,
+      };
     }),
 
   updateProfile: (payload = {}) =>
@@ -794,7 +894,7 @@ const stores = {
       (db) => {
         const actor = getActor(db);
         const tenantId = actor.tenantId || getCurrentTenantId(db);
-        const store = db.stores.find((s) => sameId(s._id, tenantId)) ?? db.stores[0];
+        const store = db.stores.find((s) => sameId(s._id, tenantId));
         if (!store) throw createHttpError("Mağaza kaydı bulunamadı", 404);
 
         const nextName = str(payload.ad ?? payload.storeName ?? payload.magazaAdi ?? store.ad);
@@ -812,11 +912,16 @@ const stores = {
           throw createHttpError("Yetkili adı soyadı zorunludur", 400);
         }
 
+        // Kurucu e-postası ve mağaza mail uzantısı (@domain.com) SABİTTİR, değiştirilemez
+        const { founderEmail, mailDomain } = resolveStoreLockedDomain(db, store, actor.email);
         store.ad = nextName;
         store.unvan = nextUnvan || nextName;
         store.yetkili = nextOwner;
         store.telefon = nextPhone;
         store.adres = nextAddress;
+        store.email = founderEmail || store.email;
+        store.kurucuEmail = founderEmail || store.kurucuEmail || store.email;
+        store.mailDomain = mailDomain;
         if (payload.vergiDairesi !== undefined) store.vergiDairesi = str(payload.vergiDairesi);
         if (payload.vergiNo !== undefined) store.vergiNo = str(payload.vergiNo);
         touch(store);
@@ -861,6 +966,13 @@ const stores = {
 
 // ─── Personeller ──────────────────────────────────────────────────────────────
 
+const enforceStoreDomainEmail = (rawEmail, lockedDomain) => {
+  const cleanRaw = lc(rawEmail);
+  const localPart = cleanRaw.split("@")[0].trim();
+  if (!localPart) return "";
+  return `${localPart}@${lockedDomain}`;
+};
+
 const users = {
   list: () =>
     run((db) => active(db.users).sort(byDateDesc("createdAt")).map(sanitizeUser)),
@@ -869,9 +981,12 @@ const users = {
     run(
       (db) => {
         const actor = getActor(db);
+        const store = db.stores.find((s) => sameId(s._id, actor.tenantId));
+        const { mailDomain: lockedDomain } = resolveStoreLockedDomain(db, store, actor.email);
+
         const ad = str(payload.ad);
         const soyad = str(payload.soyad);
-        const email = lc(payload.email);
+        const email = enforceStoreDomainEmail(payload.email, lockedDomain);
         const password = payload.password;
 
         if (!ad || !soyad || !email || !password) {
@@ -895,6 +1010,12 @@ const users = {
           );
         }
 
+        const allowedPages = normalizeAllowedPages(payload.allowedPages, {
+          role,
+          pageLocks: payload.pageLocks,
+        });
+        const pageLocks = allowedPagesToPageLocks(allowedPages);
+
         const user = newEntity("usr", {
           tenantId: actor.tenantId,
           createdBy: actor._id,
@@ -904,7 +1025,8 @@ const users = {
           password,
           role,
           permissions: normalizeFlags(payload.permissions, PERMISSION_KEYS),
-          pageLocks: normalizeFlags(payload.pageLocks, PAGE_LOCK_KEYS),
+          allowedPages,
+          pageLocks,
           pagePasswords: { finans: "", stok: "", raporlar: "", envanter: "", transferler: "" },
         });
         db.users.push(user);
@@ -921,12 +1043,17 @@ const users = {
         if (sameId(userId, actor._id)) {
           throw createHttpError("Kendi hesabınızı bu panel üzerinden düzenleyemezsiniz", 400);
         }
-        const user = db.users.find((u) => !u.isDeleted && inTenant(u) && sameId(u._id, userId));
+        const user = db.users.find(
+          (u) => !u.isDeleted && inTenant(u, actor.tenantId) && sameId(u._id, userId),
+        );
         if (!user) throw createHttpError("Personel bulunamadı", 404);
+
+        const store = db.stores.find((s) => sameId(s._id, actor.tenantId));
+        const { mailDomain: lockedDomain } = resolveStoreLockedDomain(db, store, actor.email);
 
         const ad = str(payload.ad);
         const soyad = str(payload.soyad);
-        const email = lc(payload.email);
+        const email = enforceStoreDomainEmail(payload.email, lockedDomain);
         if (!ad || !soyad || !email) {
           throw createHttpError("Ad, soyad ve e-posta zorunludur", 400);
         }
@@ -944,13 +1071,23 @@ const users = {
           throw createHttpError("Bu role atama yapma yetkiniz yok", 403);
         }
 
+        const allowedPages = normalizeAllowedPages(
+          payload.allowedPages ?? user.allowedPages,
+          {
+            role,
+            pageLocks: payload.pageLocks ?? user.pageLocks,
+          },
+        );
+        const pageLocks = allowedPagesToPageLocks(allowedPages);
+
         Object.assign(user, {
           ad,
           soyad,
           email,
           role,
           permissions: normalizeFlags(payload.permissions, PERMISSION_KEYS),
-          pageLocks: normalizeFlags(payload.pageLocks, PAGE_LOCK_KEYS),
+          allowedPages,
+          pageLocks,
         });
         touch(user);
         return sanitizeUser(user);
@@ -1115,7 +1252,17 @@ const createTransactionForCustomer = (db, customer, payload, actor) => {
   });
 
   const at = normalizeDate(payload.tarih);
-  const odemeYontemi = payload.odemeYontemi || (isTahsilat ? "Nakit" : "Veresiye");
+  const odemeYontemi = str(payload.odemeYontemi) || (isTahsilat ? "Nakit" : "Veresiye");
+
+  // Kullanıcı özel bir ödeme yöntemi girdiyse o mağazaya (tenantId) özel olarak kaydet
+  const activeStore = db.stores.find((s) => sameId(s._id, actor.tenantId || customer.tenantId));
+  if (activeStore && odemeYontemi) {
+    activeStore.customPaymentMethods = uniqueStringsTr([
+      ...(activeStore.customPaymentMethods || []),
+      odemeYontemi,
+    ]);
+  }
+
   const enrichedLines = lines.map((line) => {
     const product = productByCode(db, line.urunKodu);
     const stock = stockByCode(db, line.urunKodu);
@@ -1174,7 +1321,6 @@ const createTransactionForCustomer = (db, customer, payload, actor) => {
     kalanBorc: isTahsilat ? customer.toplamKalanBakiye : remaining,
     musteriBakiyeSonrasi: customer.toplamKalanBakiye,
     odemeYontemi,
-    kayitDefteri: str(payload.kayitDefteri),
     aciklama: str(payload.aciklama),
     installments: [],
     createdAt: at,
@@ -1336,8 +1482,10 @@ const customers = {
 
 const withCustomerRef = (db, transaction) => ({
   ...transaction,
-  musteriId: customerRef(db.customers.find((c) => sameId(c._id, transaction.musteriId))) ??
-    transaction.musteriId,
+  musteriId:
+    customerRef(
+      db.customers.find((c) => inTenant(c) && sameId(c._id, transaction.musteriId)),
+    ) ?? transaction.musteriId,
 });
 
 const transactions = {
@@ -1451,7 +1599,7 @@ const stocks = {
           throw createHttpError("adet must be a valid number greater than or equal to 0", 400);
         }
 
-        const stock = db.stocks.find((s) => sameId(s._id, stockId));
+        const stock = db.stocks.find((s) => inTenant(s) && sameId(s._id, stockId));
         if (!stock) throw createHttpError("Stock not found", 404);
 
         const minimum = num(stock.envanterdekiAdet);
@@ -1510,9 +1658,85 @@ export const DEFAULT_CATEGORIES = [
   "Klima",
 ];
 
+export const DEFAULT_PAYMENT_METHODS = [
+  "Nakit",
+  "Kredi Kartı",
+  "Havale",
+  "Veresiye",
+  "Çek",
+  "PayTR",
+  "POS Sistem Ödemesi",
+  "Bosch Sistem Ödemesi",
+  "Gipa Sistem Ödemesi",
+  "Profilo Sistem Ödemesi",
+];
+
 const getActiveStoreRecord = (db) => {
   const tenantId = getCurrentTenantId(db);
-  return db.stores.find((s) => sameId(s._id, tenantId)) ?? db.stores[0];
+  return db.stores.find((s) => sameId(s._id, tenantId));
+};
+
+const paymentMethods = {
+  list: () => {
+    try {
+      const db = loadDb();
+      const store = getActiveStoreRecord(db);
+      const custom = Array.isArray(store?.customPaymentMethods)
+        ? store.customPaymentMethods
+        : [];
+      const fromTx = Array.isArray(db?.transactions)
+        ? active(db.transactions)
+            .map((t) => t?.odemeYontemi)
+            .filter(Boolean)
+        : [];
+      const merged = uniqueStringsTr([
+        ...DEFAULT_PAYMENT_METHODS,
+        ...custom,
+        ...fromTx,
+      ]);
+      return Array.isArray(merged) && merged.length > 0
+        ? merged
+        : [...DEFAULT_PAYMENT_METHODS];
+    } catch {
+      return [...DEFAULT_PAYMENT_METHODS];
+    }
+  },
+
+  add: (name) => {
+    try {
+      const db = loadDb();
+      const clean = str(name);
+      if (!clean) {
+        return paymentMethods.list();
+      }
+      const store = getActiveStoreRecord(db);
+      if (store) {
+        const existing = Array.isArray(store.customPaymentMethods)
+          ? store.customPaymentMethods
+          : [];
+        store.customPaymentMethods = uniqueStringsTr([...existing, clean]);
+        touch(store);
+        persist(db);
+      }
+      const fromTx = Array.isArray(db?.transactions)
+        ? active(db.transactions)
+            .map((t) => t?.odemeYontemi)
+            .filter(Boolean)
+        : [];
+      const merged = uniqueStringsTr([
+        ...DEFAULT_PAYMENT_METHODS,
+        ...(Array.isArray(store?.customPaymentMethods)
+          ? store.customPaymentMethods
+          : [clean]),
+        ...fromTx,
+      ]);
+      return Array.isArray(merged) && merged.length > 0
+        ? merged
+        : [...DEFAULT_PAYMENT_METHODS];
+    } catch {
+      return [...DEFAULT_PAYMENT_METHODS];
+    }
+  },
 };
 
 const uniqueStringsTr = (items = []) => {
@@ -1888,7 +2112,9 @@ const products = {
     run(
       (db) => {
         const actor = getActor(db);
-        const history = db.stockHistory.find((m) => !m.isDeleted && sameId(m._id, movementId));
+        const history = db.stockHistory.find(
+          (m) => !m.isDeleted && inTenant(m) && sameId(m._id, movementId),
+        );
         if (!history) {
           throw createHttpError("Stok hareketi bulunamadı veya zaten iptal edilmiş", 404);
         }
@@ -1965,7 +2191,7 @@ const inventory = {
         }
 
         const transaction = db.transactions.find(
-          (t) => !t.isDeleted && sameId(t._id, transactionId),
+          (t) => !t.isDeleted && inTenant(t) && sameId(t._id, transactionId),
         );
         if (!transaction) throw createHttpError("Transaction not found", 404);
 
@@ -2085,7 +2311,6 @@ const collections = {
             odenenTutar: amount,
             odemeYontemi: payload.paymentMethod || "Nakit",
             aciklama: payload.notes,
-            kayitDefteri: "Ana Defter",
           },
           actor,
         );
@@ -2321,7 +2546,7 @@ const branches = {
   update: (id, payload) =>
     run(
       (db) => {
-        const branch = db.branches.find((b) => sameId(b._id, id));
+        const branch = db.branches.find((b) => inTenant(b) && sameId(b._id, id));
         if (!branch) throw createHttpError("Şube bulunamadı", 404);
         ["ad", "adres", "telefon", "sorumluPersonel", "isActive"].forEach((field) => {
           if (payload[field] !== undefined) {
@@ -2336,12 +2561,12 @@ const branches = {
   remove: (id) =>
     run(
       (db) => {
-        const branch = db.branches.find((b) => sameId(b._id, id));
+        const branch = db.branches.find((b) => inTenant(b) && sameId(b._id, id));
         if (!branch) throw createHttpError("Şube bulunamadı", 404);
-        if (db.transfers.some((t) => sameId(t.fromBranch, id) || sameId(t.toBranch, id))) {
+        if (db.transfers.some((t) => inTenant(t) && (sameId(t.fromBranch, id) || sameId(t.toBranch, id)))) {
           throw createHttpError("Bu şubeye bağlı transferler olduğu için silinemez", 400);
         }
-        db.branches = db.branches.filter((b) => !sameId(b._id, id));
+        db.branches = db.branches.filter((b) => !(inTenant(b) && sameId(b._id, id)));
         return { message: "Şube silindi" };
       },
       { write: true },
@@ -2370,7 +2595,7 @@ const transfers = {
 
   getById: (id) =>
     run((db) => {
-      const transfer = db.transfers.find((t) => sameId(t._id, id));
+      const transfer = db.transfers.find((t) => inTenant(t) && sameId(t._id, id));
       if (!transfer) throw createHttpError("Transfer bulunamadı", 404);
       return withTransferRefs(db, transfer);
     }),
@@ -2421,7 +2646,7 @@ const transfers = {
         if (!["Onaylandı", "Reddedildi"].includes(status)) {
           throw createHttpError("Geçersiz durum. 'Onaylandı' veya 'Reddedildi' olmalı", 400);
         }
-        const transfer = db.transfers.find((t) => sameId(t._id, id));
+        const transfer = db.transfers.find((t) => inTenant(t) && sameId(t._id, id));
         if (!transfer) throw createHttpError("Transfer bulunamadı", 404);
         if (transfer.status !== "Beklemede") {
           throw createHttpError("Sadece beklemedeki transferler güncellenebilir", 400);
@@ -2443,12 +2668,12 @@ const transfers = {
   remove: (id) =>
     run(
       (db) => {
-        const transfer = db.transfers.find((t) => sameId(t._id, id));
+        const transfer = db.transfers.find((t) => inTenant(t) && sameId(t._id, id));
         if (!transfer) throw createHttpError("Transfer bulunamadı", 404);
         if (transfer.status === "Onaylandı") {
           throw createHttpError("Onaylanan transfer silinemez", 400);
         }
-        db.transfers = db.transfers.filter((t) => !sameId(t._id, id));
+        db.transfers = db.transfers.filter((t) => !(inTenant(t) && sameId(t._id, id)));
         return { message: "Transfer başarıyla silindi" };
       },
       { write: true },
@@ -2460,7 +2685,9 @@ const SHIPMENT_STATUSES = ["Planlandı", "Yolda", "Teslim Edildi", "İptal"];
 const withShipmentRefs = (db, shipment) => ({
   ...shipment,
   customerId:
-    customerRef(db.customers.find((c) => sameId(c._id, shipment.customerId))) ?? shipment.customerId,
+    customerRef(
+      db.customers.find((c) => inTenant(c) && sameId(c._id, shipment.customerId)),
+    ) ?? shipment.customerId,
   assignedPersonnel: (shipment.assignedPersonnel || []).map(
     (userId) => userRef(db, userId) ?? userId,
   ),
@@ -2482,7 +2709,7 @@ const shipments = {
 
   getById: (id) =>
     run((db) => {
-      const shipment = db.shipments.find((s) => sameId(s._id, id));
+      const shipment = db.shipments.find((s) => inTenant(s) && sameId(s._id, id));
       if (!shipment) throw createHttpError("Sevkiyat bulunamadı", 404);
       return withShipmentRefs(db, shipment);
     }),
@@ -2524,7 +2751,7 @@ const shipments = {
   update: (id, payload) =>
     run(
       (db) => {
-        const shipment = db.shipments.find((s) => sameId(s._id, id));
+        const shipment = db.shipments.find((s) => inTenant(s) && sameId(s._id, id));
         if (!shipment) throw createHttpError("Sevkiyat bulunamadı", 404);
 
         if (payload.products) shipment.products = payload.products;
@@ -2549,12 +2776,12 @@ const shipments = {
   remove: (id) =>
     run(
       (db) => {
-        const shipment = db.shipments.find((s) => sameId(s._id, id));
+        const shipment = db.shipments.find((s) => inTenant(s) && sameId(s._id, id));
         if (!shipment) throw createHttpError("Sevkiyat bulunamadı", 404);
         if (shipment.status === "Teslim Edildi") {
           throw createHttpError("Teslim edilen sevkiyat silinemez", 400);
         }
-        db.shipments = db.shipments.filter((s) => !sameId(s._id, id));
+        db.shipments = db.shipments.filter((s) => !(inTenant(s) && sameId(s._id, id)));
         return { message: "Sevkiyat başarıyla silindi" };
       },
       { write: true },
@@ -3176,6 +3403,34 @@ const expenses = {
         0,
       );
 
+      const periodSales = sales.map((t) => {
+        const cust = db.customers.find((c) => inTenant(c, tenantId) && sameId(c._id, t.musteriId));
+        const satisTutari = round2(num(t.toplamTutar, 0));
+        const alisMaliyeti = calculateTransactionCost(db, t);
+        const netSatisKari = round2(satisTutari - alisMaliyeti);
+        const urunAciklama = (t.urunler || [])
+          .map((l) =>
+            l.urunAdi && l.urunAdi !== l.urunKodu
+              ? `${l.urunKodu} — ${l.urunAdi} (x${l.adet})`
+              : `${l.urunKodu} (x${l.adet})`,
+          )
+          .join(", ");
+
+        return {
+          id: t._id || t.id,
+          tarih: t.tarih || t.createdAt,
+          musteriId: cust?._id || t.musteriId,
+          musteriAdSoyad: t.musteriAdSoyad || (cust ? fullName(cust) : "Müşteri"),
+          musteriNo: t.musteriNo || cust?.musteriNo || "",
+          urunler: t.urunler || [],
+          urunBilgisi: urunAciklama || t.urunBilgisi || "Ürün Satışı",
+          odemeYontemi: t.odemeYontemi || "Veresiye",
+          satisTutari,
+          alisMaliyeti,
+          netSatisKari,
+        };
+      });
+
       return {
         year,
         month,
@@ -3190,6 +3445,7 @@ const expenses = {
         satisSayisi: sales.length,
         satilanUrunAdedi,
         giderSayisi: periodExpenses.length,
+        sales: periodSales,
         expenses: periodExpenses,
       };
     }),
@@ -3206,6 +3462,7 @@ export const localDb = {
   transactions,
   stocks,
   products,
+  paymentMethods,
   inventory,
   collections,
   installments,

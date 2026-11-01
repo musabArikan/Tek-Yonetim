@@ -96,7 +96,7 @@ export default function DashboardPage({ onNewCustomerSale }) {
         (item.detay || "").toLocaleLowerCase("tr-TR").includes(q) ||
         String(item.musteriNo || "").includes(q)
       );
-    });
+    }).slice(0, 15);
   }, [magazaHareketleri, typeFilter, personelFilter, searchQuery]);
 
   if (loading) {
@@ -284,11 +284,11 @@ export default function DashboardPage({ onNewCustomerSale }) {
                   Mağaza Hareketleri / Son İşlemler
                 </h2>
                 <span className="text-xs font-semibold bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full">
-                  {filteredHareketler.length} İşlem
+                  Son {filteredHareketler.length} İşlem
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                En yeniden eskiye doğru mağazada gerçekleşen tüm satış ve tahsilat hareketleri
+                En yeniden eskiye doğru mağazada gerçekleşen en güncel son 15 işlem hareketi
               </p>
             </div>
           </div>

@@ -70,7 +70,6 @@ export const initialTransactions = [
     islemTuru: "Satış",
     tutar: 3000,
     odemeYontemi: "Veresiye",
-    kayitDefteri: "Ana Defter",
   },
   {
     id: 2,
@@ -80,7 +79,6 @@ export const initialTransactions = [
     islemTuru: "Tahsilat",
     tutar: 1000,
     odemeYontemi: "Nakit",
-    kayitDefteri: "Ana Defter",
   },
   {
     id: 3,
@@ -90,7 +88,6 @@ export const initialTransactions = [
     islemTuru: "Satış",
     tutar: 2500,
     odemeYontemi: "Veresiye",
-    kayitDefteri: "Ana Defter",
     urunler: [
       {
         urunKodu: "Bosch Çamaşır Makinesi WAT28461TR",
@@ -108,7 +105,6 @@ export const initialTransactions = [
     islemTuru: "Satış",
     tutar: 15000,
     odemeYontemi: "Kredi Kartı",
-    kayitDefteri: "Mağaza Defteri",
     urunler: [
       {
         urunKodu: "Arçelik Buzdolabı 450L",
@@ -126,7 +122,6 @@ export const initialTransactions = [
     islemTuru: "Tahsilat",
     tutar: 13800,
     odemeYontemi: "Havale",
-    kayitDefteri: "Mağaza Defteri",
   },
   {
     id: 6,
@@ -136,7 +131,6 @@ export const initialTransactions = [
     islemTuru: "Satış",
     tutar: 8750,
     odemeYontemi: "Veresiye",
-    kayitDefteri: "Ana Defter",
     urunler: [
       {
         urunKodu: 'Samsung TV 55" QLED',
@@ -154,7 +148,6 @@ export const initialTransactions = [
     islemTuru: "Satış",
     tutar: 8500,
     odemeYontemi: "Veresiye",
-    kayitDefteri: "Toptan Defter",
     urunler: [
       {
         urunKodu: "Vestel Kurutma Makinesi",
@@ -178,15 +171,7 @@ export const initialTransactions = [
     islemTuru: "Tahsilat",
     tutar: 5300,
     odemeYontemi: "Nakit",
-    kayitDefteri: "Toptan Defter",
   },
-];
-
-export const defterOnerileri = [
-  "Ana Defter",
-  "Mağaza Defteri",
-  "Toptan Defter",
-  "Online Satış Defteri",
 ];
 
 export const odemeYontemleri = [
@@ -195,6 +180,8 @@ export const odemeYontemleri = [
   "Havale",
   "Veresiye",
   "Çek",
+  "PayTR",
+  "POS Sistem Ödemesi",
   "Bosch Sistem Ödemesi",
   "Gipa Sistem Ödemesi",
   "Profilo Sistem Ödemesi",

@@ -45,17 +45,11 @@ import {
 } from "./utils/authStorage";
 import {
   hasPermission,
-  isPageLocked,
-  normalizePageLocks,
   normalizePermissions,
+  getAvailablePages,
+  canAccessPage,
+  getDefaultPageForUser,
 } from "./utils/rbac";
-
-const defaultDefterSuggestions = [
-  "Ana Defter",
-  "Mağaza Defteri",
-  "Toptan Defter",
-  "Online Satış Defteri",
-];
 
 const getPageFromPath = (pathname) => {
   if (pathname === "/magazam") return "magazam";
@@ -125,7 +119,6 @@ const normalizeTransaction = (transaction) => {
     kalanHesap: Number(transaction.kalanHesap ?? 0),
     odenenTutar: normalizedCollectionAmount,
     odemeYontemi: transaction.odemeYontemi || "Veresiye",
-    kayitDefteri: transaction.kayitDefteri || "",
     aciklama: transaction.aciklama || "",
   };
 };
@@ -171,34 +164,17 @@ function App() {
   const submitGuardRef = useRef(false);
   const userRole = authSession?.role || "";
   const currentUserId = authSession?.userId || "";
-  const isAdmin = userRole === "admin";
-  const isAdminOrManager = isAdmin || userRole === "yonetici";
   const permissions = useMemo(
     () => normalizePermissions(authSession?.permissions),
     [authSession],
   );
-  const pageLocks = useMemo(
-    () => normalizePageLocks(authSession?.pageLocks),
+  const availablePages = useMemo(
+    () => getAvailablePages(authSession),
     [authSession],
   );
-  const availablePages = useMemo(
-    () =>
-      ["dashboard", "magazam", "musteriler", "urun-stok", "envanter", "personeller", "musteri-finans", "raporlar"].filter(
-        (pageId) =>
-          pageId === "musteriler" ||
-          (pageId === "dashboard" && isAdmin) ||
-          (pageId === "magazam" && isAdminOrManager) ||
-          (pageId === "personeller" && isAdmin) ||
-          (pageId === "raporlar" && isAdmin) ||
-          (pageId === "urun-stok" && !isPageLocked(pageLocks, "stok") && !isPageLocked(pageLocks, "urun-stok")) ||
-          (!isPageLocked(pageLocks, pageId) &&
-            pageId !== "urun-stok" &&
-            pageId !== "magazam" &&
-            pageId !== "personeller" &&
-            pageId !== "raporlar" &&
-            pageId !== "dashboard"),
-      ),
-    [isAdmin, isAdminOrManager, pageLocks],
+  const defaultAllowedPage = useMemo(
+    () => getDefaultPageForUser(authSession),
+    [authSession],
   );
   const canDeleteCustomer = hasPermission(permissions, "musteriSilebilir");
   const canCollectPayment = hasPermission(permissions, "tahsilatAlabilir");
@@ -208,11 +184,6 @@ function App() {
     permissions,
     "envanterDuzenleyebilir",
   );
-
-  const defterSuggestions = useMemo(() => {
-    const fromTx = transactions.map((t) => t.kayitDefteri).filter(Boolean);
-    return [...new Set([...defaultDefterSuggestions, ...fromTx])];
-  }, [transactions]);
 
   const filteredCustomers = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -282,9 +253,9 @@ function App() {
       toast.error("Yetkisiz Erişim: Bu sayfayı görüntüleme yetkiniz yok.", {
         toastId: `page-lock-${pageId}`,
       });
-      syncRoute("musteriler", "/musteriler", true);
+      syncRoute(defaultAllowedPage, `/${defaultAllowedPage}`, true);
     },
-    [syncRoute],
+    [syncRoute, defaultAllowedPage],
   );
 
   const refreshStockData = useCallback(async () => {
@@ -409,11 +380,7 @@ function App() {
     };
 
     if (location.pathname === "/") {
-      if (isAdmin) {
-        syncRoute("dashboard", "/dashboard", true);
-      } else {
-        syncRoute("musteriler", "/musteriler", true);
-      }
+      syncRoute(defaultAllowedPage, `/${defaultAllowedPage}`, true);
       return;
     }
 
@@ -422,87 +389,32 @@ function App() {
       return;
     }
 
-    if (location.pathname === "/dashboard") {
-      if (!isAdmin) {
-        redirectUnauthorizedPage("dashboard");
+    const targetPage = getPageFromPath(location.pathname);
+    if (targetPage) {
+      if (!canAccessPage(authSession, targetPage)) {
+        redirectUnauthorizedPage(targetPage);
         return;
       }
-      setActivePage("dashboard");
-      return;
-    }
 
-    if (location.pathname === "/magazam") {
-      if (!isAdminOrManager) {
-        redirectUnauthorizedPage("magazam");
+      const reAuthMap = {
+        envanter: "envanter",
+        "urun-stok": "stok",
+        "musteri-finans": "finans",
+        raporlar: "raporlar",
+      };
+      if (reAuthMap[targetPage] && !checkPassword(targetPage, reAuthMap[targetPage])) {
         return;
       }
-      setActivePage("magazam");
+
+      setActivePage(targetPage);
       return;
     }
 
-    if (location.pathname === "/musteriler") {
-      setActivePage("musteriler");
-      return;
-    }
-
-    if (location.pathname === "/personeller") {
-      if (!isAdmin) {
-        redirectUnauthorizedPage("personeller");
-        return;
-      }
-      setActivePage("personeller");
-      return;
-    }
-
-    if (location.pathname === "/envanter") {
-      if (isPageLocked(pageLocks, "envanter")) {
-        redirectUnauthorizedPage("envanter");
-        return;
-      }
-      if (!checkPassword("envanter", "envanter")) return;
-      setActivePage("envanter");
-      return;
-    }
-
-    if (location.pathname === "/urun-stok") {
-      if (isPageLocked(pageLocks, "stok") || isPageLocked(pageLocks, "urun-stok")) {
-        redirectUnauthorizedPage("urun-stok");
-        return;
-      }
-      if (!checkPassword("urun-stok", "stok")) return;
-      setActivePage("urun-stok");
-      return;
-    }
-
-    if (location.pathname === "/musteri-finans") {
-      if (isPageLocked(pageLocks, "musteri-finans")) {
-        redirectUnauthorizedPage("musteri-finans");
-        return;
-      }
-      if (!checkPassword("musteri-finans", "finans")) return;
-      setActivePage("musteri-finans");
-      return;
-    }
-
-    if (location.pathname === "/raporlar") {
-      if (!isAdmin) {
-        redirectUnauthorizedPage("raporlar");
-        return;
-      }
-      if (!checkPassword("raporlar", "raporlar")) return;
-      setActivePage("raporlar");
-      return;
-    }
-
-    // Bilinmeyen rotalar için ana sayfaya yönlendir
-    const defaultPath = isAdmin ? "/dashboard" : "/musteriler";
-    const defaultPage = isAdmin ? "dashboard" : "musteriler";
-    syncRoute(defaultPage, defaultPath, true);
+    // Bilinmeyen rotalar için varsayılan sayfaya yönlendir
+    syncRoute(defaultAllowedPage, `/${defaultAllowedPage}`, true);
   }, [
     authSession,
-    isAdmin,
-    isAdminOrManager,
-    pageLocks,
+    defaultAllowedPage,
     redirectUnauthorizedPage,
     isAuthenticated,
     location.pathname,
@@ -527,11 +439,7 @@ function App() {
 
   const handlePageChange = useCallback(
     (pageId, isFromNav = true) => {
-      const isLocked =
-        pageId === "urun-stok"
-          ? isPageLocked(pageLocks, "stok") || isPageLocked(pageLocks, "urun-stok")
-          : pageId !== "home" && isPageLocked(pageLocks, pageId);
-      if (isLocked) {
+      if (pageId !== "home" && !canAccessPage(authSession, pageId)) {
         redirectUnauthorizedPage(pageId);
         return;
       }
@@ -564,10 +472,10 @@ function App() {
         raporlar: "/raporlar",
       };
 
-      const defaultPath = isAdmin ? "/dashboard" : "/musteriler";
+      const defaultPath = `/${defaultAllowedPage}`;
       syncRoute(pageId, pagePathMap[pageId] ?? defaultPath);
     },
-    [pageLocks, redirectUnauthorizedPage, syncRoute, authSession, isAdmin],
+    [redirectUnauthorizedPage, syncRoute, authSession, defaultAllowedPage],
   );
 
   // Re-Auth gerektiren sayfalara geçiş
@@ -584,14 +492,14 @@ function App() {
           "musteri-finans": "/musteri-finans",
           raporlar: "/raporlar",
         };
-        const defaultPath = isAdmin ? "/dashboard" : "/musteriler";
+        const defaultPath = `/${defaultAllowedPage}`;
         syncRoute(pageId, pagePathMap[pageId] ?? defaultPath);
         return;
       }
       setPendingPage(pageId);
       setReAuthPage(reAuthKey);
     },
-    [syncRoute, isAdmin],
+    [syncRoute, defaultAllowedPage],
   );
 
   const performDeleteCustomer = useCallback(
@@ -663,7 +571,6 @@ function App() {
             pesinat: sanitizeAmountForPayload(formData.pesinat, 0),
             kalanHesap: sanitizeAmountForPayload(formData.kalanHesap, 0),
             odemeYontemi: formData.odemeYontemi,
-            kayitDefteri: formData.kayitDefteri.trim(),
           },
         };
 
@@ -713,7 +620,6 @@ function App() {
           pesinat: sanitizeAmountForPayload(formData.pesinat, 0),
           kalanHesap: sanitizeAmountForPayload(formData.kalanHesap, 0),
           odemeYontemi: formData.odemeYontemi,
-          kayitDefteri: formData.kayitDefteri.trim(),
         };
 
         await createTransaction(transactionPayload);
@@ -751,7 +657,6 @@ function App() {
           islemTuru: "Tahsilat",
           odenenTutar: sanitizeAmountForPayload(formData.odenenTutar, 0),
           odemeYontemi: formData.odemeYontemi,
-          kayitDefteri: formData.kayitDefteri?.trim() || "",
           aciklama: formData.aciklama?.trim() || "",
         };
 
@@ -863,7 +768,6 @@ function App() {
             onClose={() => setShowNewCustomerModal(false)}
             onSubmit={handleNewCustomerSale}
             stockOptions={stockOptions}
-            defterSuggestions={defterSuggestions}
             isSubmitting={isSubmitting}
             submitError={submitError}
           />
@@ -876,7 +780,6 @@ function App() {
             onSubmit={handleExistingCustomerSale}
             customers={customers}
             stockOptions={stockOptions}
-            defterSuggestions={defterSuggestions}
             isSubmitting={isSubmitting}
             submitError={submitError}
           />
@@ -888,7 +791,6 @@ function App() {
             onClose={() => setShowCollectionModal(false)}
             onSubmit={handleCollection}
             customer={selectedCustomer}
-            defterSuggestions={defterSuggestions}
             submitError={submitError}
             isSubmitting={isSubmitting}
           />

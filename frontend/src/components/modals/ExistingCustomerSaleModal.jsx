@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import Select from "react-select";
 import Modal from "./Modal";
-import DefterInput from "../ui/DefterInput";
 import ProductLinesField from "../ui/ProductLinesField";
-import { FormField, TextInput, SelectInput } from "../ui/FormField";
-import { odemeYontemleri } from "../../data/fakeData";
+import PaymentMethodSelect from "../ui/PaymentMethodSelect";
+import { FormField, TextInput } from "../ui/FormField";
 import { getFullName } from "../../utils/formatters";
 import {
   validateRequired,
@@ -51,7 +50,6 @@ const emptyForm = {
   odemeYontemi: "Veresiye",
   toplamTutar: "",
   pesinat: "",
-  kayitDefteri: "",
 };
 
 export default function ExistingCustomerSaleModal({
@@ -60,7 +58,6 @@ export default function ExistingCustomerSaleModal({
   onSubmit,
   customers,
   stockOptions,
-  defterSuggestions,
   isSubmitting = false,
   submitError = "",
 }) {
@@ -123,10 +120,6 @@ export default function ExistingCustomerSaleModal({
       ["odemeYontemi", validateRequired(form.odemeYontemi, "Ödeme yöntemi")],
       ["toplamTutar", validateAmount(form.toplamTutar, "Toplam tutar")],
       ["pesinat", validatePesinat(form.pesinat, form.toplamTutar)],
-      [
-        "kayitDefteri",
-        validateRequired(form.kayitDefteri, "Kayıt edilen defter"),
-      ],
     ];
     checks.forEach(([field, err]) => {
       if (err) newErrors[field] = err;
@@ -234,25 +227,12 @@ export default function ExistingCustomerSaleModal({
         </FormField>
 
         <FormField label="Ödeme Yöntemi" error={errors.odemeYontemi} required>
-          <SelectInput
+          <PaymentMethodSelect
             value={form.odemeYontemi}
             onChange={updateField("odemeYontemi")}
             error={errors.odemeYontemi}
-          >
-            {odemeYontemleri.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </SelectInput>
+          />
         </FormField>
-
-        <DefterInput
-          value={form.kayitDefteri}
-          onChange={updateField("kayitDefteri")}
-          suggestions={defterSuggestions}
-          error={errors.kayitDefteri}
-        />
 
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-outline-variant">
           <button

@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import Modal from "./Modal";
-import DefterInput from "../ui/DefterInput";
-import { FormField, TextInput, SelectInput } from "../ui/FormField";
-import { odemeYontemleri } from "../../data/fakeData";
+import PaymentMethodSelect from "../ui/PaymentMethodSelect";
+import { FormField, TextInput } from "../ui/FormField";
 import { getFullName } from "../../utils/formatters";
 import { validateRequired, validateAmount } from "../../utils/validators";
 import { formatAmountInput, parseAmountInput } from "../../utils/money";
@@ -11,7 +10,6 @@ const emptyForm = {
   tutar: "",
   tarih: new Date().toISOString().split("T")[0],
   odemeYontemi: "Nakit",
-  kayitDefteri: "",
   aciklama: "",
 };
 
@@ -20,7 +18,6 @@ export default function CollectionModal({
   onClose,
   onSubmit,
   customer,
-  defterSuggestions,
   submitError = "",
   isSubmitting = false,
 }) {
@@ -51,10 +48,6 @@ export default function CollectionModal({
       ["tutar", validateAmount(form.tutar, "Tahsilat tutarı")],
       ["tarih", validateRequired(form.tarih, "Tarih")],
       ["odemeYontemi", validateRequired(form.odemeYontemi, "Ödeme yöntemi")],
-      [
-        "kayitDefteri",
-        validateRequired(form.kayitDefteri, "Kayıt edilen defter"),
-      ],
     ];
     checks.forEach(([field, err]) => {
       if (err) newErrors[field] = err;
@@ -79,7 +72,6 @@ export default function CollectionModal({
         islemTuru: "Tahsilat",
         odenenTutar: parseAmountInput(form.tutar),
         odemeYontemi: form.odemeYontemi,
-        kayitDefteri: form.kayitDefteri,
         aciklama: form.aciklama || "",
       });
       onClose();
@@ -121,17 +113,11 @@ export default function CollectionModal({
           />
         </FormField>
         <FormField label="Ödeme Yöntemi" error={errors.odemeYontemi} required>
-          <SelectInput
+          <PaymentMethodSelect
             value={form.odemeYontemi}
             onChange={updateField("odemeYontemi")}
             error={errors.odemeYontemi}
-          >
-            {odemeYontemleri.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </SelectInput>
+          />
         </FormField>
         <FormField label="Açıklama">
           <TextInput
@@ -140,12 +126,6 @@ export default function CollectionModal({
             placeholder="Opsiyonel açıklama"
           />
         </FormField>
-        <DefterInput
-          value={form.kayitDefteri}
-          onChange={updateField("kayitDefteri")}
-          suggestions={defterSuggestions}
-          error={errors.kayitDefteri}
-        />
 
         {(submitError || localError) && (
           <p className="mt-3 text-sm font-medium text-red-600">
